@@ -1,21 +1,108 @@
-name: County Championship News Test
+name: County Championship News
 
 on:
   workflow_dispatch:
 
 jobs:
-  fetch-news:
+  news:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Fetch BBC Cricket RSS feed
+      - name: Fetch and send cricket news
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          curl -L "https://feeds.bbci.co.uk/sport/cricket/rss.xml" -o bbc.xml
-          echo "BBC feed downloaded successfully"
-          head -c 1000 bbc.xml
+          python3 - <<'PY'
+          import urllib.request
+          import urllib.parse
+          import xml.etree.ElementTree as ET
 
-      - name: Fetch ESPNcricinfo RSS feed
-        run: |
-          curl -L "https://www.espncricinfo.com/rss/content/story/feeds/0.xml" -o espn.xml
-          echo "ESPNcricinfo feed downloaded successfully"
-          head -c 1000 espn.xml
+          feeds = {
+              "BBC Sport": "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
+              "ESPNcricinfo": "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"
+          }
+
+          keywords = [
+              "county championship",
+              "county cricket",
+              "division one",
+              "division two",
+              "surrey",
+              "somerset",
+              "yorkshire",
+              "lancashire",
+              "essex",
+              "sussex",
+              "hampshire",
+              "nottinghamshire",
+              "warwickshire",
+              "glamorgan",
+              "leicestershire",
+              "durham",
+              "worcestershire",
+              "middlesex",
+              "derbyshire",
+              "northamptonshire",
+              "kent",
+              "gloucestershire"
+          ]
+
+          articles = []
+
+          for source, url in feeds.items():
+              try:
+                  request = urllib.request.Request(
+                      url,
+                      headers={"User-Agent": "CountyChampionshipDiscord/1.0"}
+                  )
+
+                  data = urllib.request.urlopen(request, timeout=20).read()
+                  root = ET.fromstring(data)
+
+                  for item in root.findall(".//item"):
+                      title = item.findtext("title", "").strip()
+                      link = item.findtext("link", "").strip()
+                      description = item.findtext("description", "").strip()
+
+                      text = (title + " " + description).lower()
+
+                      if any(keyword in text for keyword in keywords):
+                          articles.append((source, title, link))
+
+              except Exception as e:
+                  print(f"Could not read {source}: {e}")
+
+          if not articles:
+              message = "🏏 **County Championship News Test**\n\nNo County Championship stories found in the current feeds."
+          else:
+              lines = ["🏏 **COUNTY CHAMPIONSHIP NEWS TEST**", ""]
+
+              seen = set()
+
+              for source, title, link in articles[:10]:
+                  if link in seen:
+                      continue
+
+                  seen.add(link)
+
+                  lines.append(f"**{title}**")
+                  lines.append(f"{source} • {link}")
+                  lines.append("")
+
+              message = "\n".join(lines)
+
+          # Discord messages have a 2,000-character limit.
+          message = message[:1900]
+
+          payload = urllib.parse.urlencode({"content": message}).encode()
+
+          request = urllib.request.Request(
+              "${DISCORD_WEBHOOK_URL}",
+              data=payload,
+              headers={"Content-Type": "application/x-www-form-urlencoded"}
+          )
+
+          urllib.request.urlopen(request, timeout=20)
+
+          print(message)
+          PY
