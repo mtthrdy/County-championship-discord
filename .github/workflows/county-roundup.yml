@@ -16,9 +16,10 @@ jobs:
           import urllib.request
           import xml.etree.ElementTree as ET
           import json
-          import os
           import html
           import re
+          from datetime import datetime, timezone, timedelta
+          from email.utils import parsedate_to_datetime
 
           feeds = {
               "BBC Sport": "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
@@ -46,12 +47,18 @@ jobs:
               "Gloucestershire"
           ]
 
-          championship_terms = [
-              "county championship",
-              "county cricket",
-              "division one",
-              "division two"
+          exclude_terms = [
+              "t20",
+              "blast",
+              "the hundred",
+              "hundred",
+              "county cup",
+              "women's",
+              "women’s"
           ]
+
+          now = datetime.now(timezone.utc)
+          cutoff = now - timedelta(hours=36)
 
           articles = []
 
@@ -70,6 +77,7 @@ jobs:
                   root = ET.fromstring(data)
 
                   for item in root.findall(".//item"):
+
                       title = html.unescape(
                           item.findtext("title", "").strip()
                       )
@@ -80,32 +88,85 @@ jobs:
                           item.findtext("description", "").strip()
                       )
 
+                      pub_date = item.findtext(
+                          "pubDate", ""
+                      ).strip()
+
+                      if not title or not link or not pub_date:
+                          continue
+
+                      try:
+                          published = parsedate_to_datetime(
+                              pub_date
+                          )
+
+                          if published.tzinfo is None:
+                              published = published.replace(
+                                  tzinfo=timezone.utc
+                              )
+
+                          published = published.astimezone(
+                              timezone.utc
+                          )
+
+                      except Exception:
+                          continue
+
+                      # Ignore anything older than 36 hours.
+                      if published < cutoff:
+                          continue
+
                       text = (
                           title + " " + description
                       ).lower()
 
-                      county_matches = [
-                          county for county in counties
-                          if county.lower() in text
-                      ]
-
-                      championship_match = any(
+                      # Ignore other competitions.
+                      if any(
                           term in text
-                          for term in championship_terms
+                          for term in exclude_terms
+                      ):
+                          continue
+
+                      # We want explicit Championship references
+                      # OR a county name alongside Championship
+                      # language in the article.
+                      championship = (
+                          "county championship" in text
+                          or "county cricket championship" in text
+                          or "championship division" in text
                       )
 
-                      if county_matches or championship_match:
-                          articles.append({
-                              "source": source,
-                              "title": title,
-                              "link": link,
-                              "counties": county_matches
-                          })
+                      if not championship:
+                          continue
+
+                      county_matches = []
+
+                      for county in counties:
+                          pattern = r"\b" + re.escape(
+                              county.lower()
+                          ) + r"\b"
+
+                          if re.search(pattern, text):
+                              county_matches.append(county)
+
+                      articles.append({
+                          "source": source,
+                          "title": title,
+                          "link": link,
+                          "published": published,
+                          "counties": county_matches
+                      })
 
               except Exception as e:
                   print(f"Could not read {source}: {e}")
 
-          # Remove duplicate links
+          # Newest first.
+          articles.sort(
+              key=lambda x: x["published"],
+              reverse=True
+          )
+
+          # Remove duplicate links.
           unique = []
           seen = set()
 
@@ -116,53 +177,68 @@ jobs:
               seen.add(article["link"])
               unique.append(article)
 
-          articles = unique[:12]
+          articles = unique[:6]
+
+          today = now.strftime("%d %B %Y")
 
           if not articles:
+
               message = (
-                  "🏏 **COUNTY CHAMPIONSHIP ROUND-UP**\n\n"
-                  "No new County Championship stories were "
-                  "found in the BBC Sport or ESPNcricinfo feeds."
+                  f"🏏 **COUNTY CHAMPIONSHIP ROUND-UP**\n"
+                  f"*{today}*\n\n"
+                  "No new County Championship stories "
+                  "were found in the last 36 hours."
               )
 
           else:
+
               lines = [
                   "🏏 **COUNTY CHAMPIONSHIP ROUND-UP**",
+                  f"*{today}*",
                   "",
                   "📰 **Latest stories**",
                   ""
               ]
 
               for article in articles:
+
                   county_text = ""
 
                   if article["counties"]:
                       county_text = (
                           " • " +
-                          ", ".join(article["counties"])
+                          ", ".join(
+                              article["counties"][:3]
+                          )
                       )
 
+                  # Markdown link keeps the message compact.
                   lines.append(
-                      f"**{article['title']}**"
+                      f"• **[{article['title']}]"
+                      f"({article['link']})**"
                   )
 
                   lines.append(
                       f"_{article['source']}{county_text}_"
                   )
 
-                  lines.append(
-                      f"🔗 {article['link']}"
-                  )
-
                   lines.append("")
+
+              lines.append(
+                  f"*{len(articles)} stories from the "
+                  "last 36 hours*"
+              )
 
               message = "\n".join(lines)
 
-          # Keep safely below Discord's 2,000-character limit
+          # Discord limit is 2,000 characters.
           message = message[:1900]
 
           with open("discord-message.json", "w") as f:
-              json.dump({"content": message}, f)
+              json.dump(
+                  {"content": message},
+                  f
+              )
 
           print(message)
           PY
