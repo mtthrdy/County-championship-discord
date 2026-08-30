@@ -27,38 +27,39 @@ jobs:
           }
 
           counties = [
-              "Surrey",
-              "Somerset",
-              "Yorkshire",
-              "Lancashire",
-              "Essex",
-              "Sussex",
-              "Hampshire",
-              "Nottinghamshire",
-              "Warwickshire",
-              "Glamorgan",
-              "Leicestershire",
-              "Durham",
-              "Worcestershire",
-              "Middlesex",
-              "Derbyshire",
-              "Northamptonshire",
-              "Kent",
-              "Gloucestershire"
+              "Surrey", "Somerset", "Yorkshire", "Lancashire",
+              "Essex", "Sussex", "Hampshire", "Nottinghamshire",
+              "Warwickshire", "Glamorgan", "Leicestershire", "Durham",
+              "Worcestershire", "Middlesex", "Derbyshire",
+              "Northamptonshire", "Kent", "Gloucestershire"
           ]
 
+          # Terms which strongly indicate the County Championship.
+          championship_terms = [
+              "county championship",
+              "county championship division",
+              "county cricket championship",
+              "championship division"
+          ]
+
+          # Competitions/topics we definitely don't want.
           exclude_terms = [
-              "t20",
-              "blast",
+              "t20 blast",
+              "vitality blast",
               "the hundred",
-              "hundred",
+              "hundred cricket",
               "county cup",
-              "women's",
-              "women’s"
+              "international",
+              "test match",
+              "odi",
+              "one-day international",
+              "t20 world cup",
+              "women's cricket",
+              "women’s cricket"
           ]
 
           now = datetime.now(timezone.utc)
-          cutoff = now - timedelta(hours=36)
+          cutoff = now - timedelta(hours=24)
 
           articles = []
 
@@ -66,7 +67,7 @@ jobs:
               try:
                   request = urllib.request.Request(
                       url,
-                      headers={"User-Agent": "CountyChampionshipDiscord/1.0"}
+                      headers={"User-Agent": "Mozilla/5.0"}
                   )
 
                   data = urllib.request.urlopen(
@@ -96,9 +97,7 @@ jobs:
                           continue
 
                       try:
-                          published = parsedate_to_datetime(
-                              pub_date
-                          )
+                          published = parsedate_to_datetime(pub_date)
 
                           if published.tzinfo is None:
                               published = published.replace(
@@ -112,7 +111,7 @@ jobs:
                       except Exception:
                           continue
 
-                      # Ignore anything older than 36 hours.
+                      # Only consider the last 24 hours.
                       if published < cutoff:
                           continue
 
@@ -120,33 +119,27 @@ jobs:
                           title + " " + description
                       ).lower()
 
-                      # Ignore other competitions.
+                      # Exclude other competitions/topics.
                       if any(
                           term in text
                           for term in exclude_terms
                       ):
                           continue
 
-                      # We want explicit Championship references
-                      # OR a county name alongside Championship
-                      # language in the article.
-                      championship = (
-                          "county championship" in text
-                          or "county cricket championship" in text
-                          or "championship division" in text
-                      )
-
-                      if not championship:
+                      # Require an explicit Championship reference.
+                      if not any(
+                          term in text
+                          for term in championship_terms
+                      ):
                           continue
 
                       county_matches = []
 
                       for county in counties:
-                          pattern = r"\b" + re.escape(
-                              county.lower()
-                          ) + r"\b"
-
-                          if re.search(pattern, text):
+                          if re.search(
+                              r"\b" + re.escape(county.lower()) + r"\b",
+                              text
+                          ):
                               county_matches.append(county)
 
                       articles.append({
@@ -177,46 +170,36 @@ jobs:
               seen.add(article["link"])
               unique.append(article)
 
-          articles = unique[:6]
+          # Maximum five stories.
+          articles = unique[:5]
 
           today = now.strftime("%d %B %Y")
 
-          if not articles:
+          lines = [
+              "🏏 **COUNTY CHAMPIONSHIP MORNING BRIEF**",
+              f"*{today}*",
+              "",
+              "📰 **Latest from the Championship**",
+              ""
+          ]
 
-              message = (
-                  f"🏏 **COUNTY CHAMPIONSHIP ROUND-UP**\n"
-                  f"*{today}*\n\n"
-                  "No new County Championship stories "
-                  "were found in the last 36 hours."
-              )
-
-          else:
-
-              lines = [
-                  "🏏 **COUNTY CHAMPIONSHIP ROUND-UP**",
-                  f"*{today}*",
-                  "",
-                  "📰 **Latest stories**",
-                  ""
-              ]
+          if articles:
 
               for article in articles:
+
+                  # The headline itself is the clickable link.
+                  lines.append(
+                      f"• **[{article['title']}]"
+                      f"({article['link']})**"
+                  )
 
                   county_text = ""
 
                   if article["counties"]:
                       county_text = (
                           " • " +
-                          ", ".join(
-                              article["counties"][:3]
-                          )
+                          ", ".join(article["counties"][:3])
                       )
-
-                  # Markdown link keeps the message compact.
-                  lines.append(
-                      f"• **[{article['title']}]"
-                      f"({article['link']})**"
-                  )
 
                   lines.append(
                       f"_{article['source']}{county_text}_"
@@ -225,13 +208,19 @@ jobs:
                   lines.append("")
 
               lines.append(
-                  f"*{len(articles)} stories from the "
-                  "last 36 hours*"
+                  f"*{len(articles)} stories from the last 24 hours*"
               )
 
-              message = "\n".join(lines)
+          else:
 
-          # Discord limit is 2,000 characters.
+              lines.append(
+                  "No new County Championship stories "
+                  "were found in the last 24 hours."
+              )
+
+          message = "\n".join(lines)
+
+          # Stay safely below Discord's 2,000 character limit.
           message = message[:1900]
 
           with open("discord-message.json", "w") as f:
