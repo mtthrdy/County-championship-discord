@@ -1,1 +1,21 @@
+name: County Championship News Test
 
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch BBC Cricket RSS feed
+        run: |
+          curl -L "https://feeds.bbci.co.uk/sport/cricket/rss.xml" -o bbc.xml
+          echo "BBC feed downloaded successfully"
+          head -c 1000 bbc.xml
+
+      - name: Fetch ESPNcricinfo RSS feed
+        run: |
+          curl -L "https://www.espncricinfo.com/rss/content/story/feeds/0.xml" -o espn.xml
+          echo "ESPNcricinfo feed downloaded successfully"
+          head -c 1000 espn.xml
