@@ -1,0 +1,15 @@
+name: Test Discord Webhook
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send test message to Discord
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{"content":"🏏 Test message from the County Championship Discord automation! If you can see this, it works."}' \
+            "${{ secrets.DISCORD_WEBHOOK_URL }}"
