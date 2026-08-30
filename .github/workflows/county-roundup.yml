@@ -15,7 +15,10 @@ jobs:
           python3 - <<'PY'
           import urllib.request
           import urllib.parse
+          import urllib.error
           import xml.etree.ElementTree as ET
+          import os
+          import json
 
           feeds = {
               "BBC Sport": "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
@@ -53,10 +56,16 @@ jobs:
               try:
                   request = urllib.request.Request(
                       url,
-                      headers={"User-Agent": "CountyChampionshipDiscord/1.0"}
+                      headers={
+                          "User-Agent": "CountyChampionshipDiscord/1.0"
+                      }
                   )
 
-                  data = urllib.request.urlopen(request, timeout=20).read()
+                  data = urllib.request.urlopen(
+                      request,
+                      timeout=20
+                  ).read()
+
                   root = ET.fromstring(data)
 
                   for item in root.findall(".//item"):
@@ -64,22 +73,36 @@ jobs:
                       link = item.findtext("link", "").strip()
                       description = item.findtext("description", "").strip()
 
-                      text = (title + " " + description).lower()
+                      text = (
+                          title + " " + description
+                      ).lower()
 
-                      if any(keyword in text for keyword in keywords):
-                          articles.append((source, title, link))
+                      if any(
+                          keyword in text
+                          for keyword in keywords
+                      ):
+                          articles.append(
+                              (source, title, link)
+                          )
 
               except Exception as e:
                   print(f"Could not read {source}: {e}")
 
           if not articles:
-              message = "🏏 **County Championship News Test**\n\nNo County Championship stories found in the current feeds."
+              message = (
+                  "🏏 **County Championship News Test**\n\n"
+                  "No County Championship stories found "
+                  "in the current feeds."
+              )
           else:
-              lines = ["🏏 **COUNTY CHAMPIONSHIP NEWS TEST**", ""]
+              lines = [
+                  "🏏 **COUNTY CHAMPIONSHIP NEWS TEST**",
+                  ""
+              ]
 
               seen = set()
 
-              for source, title, link in articles[:10]:
+              for source, title, link in articles:
                   if link in seen:
                       continue
 
@@ -89,20 +112,30 @@ jobs:
                   lines.append(f"{source} • {link}")
                   lines.append("")
 
+                  if len("\n".join(lines)) > 1800:
+                      break
+
               message = "\n".join(lines)
 
-          # Discord messages have a 2,000-character limit.
-          message = message[:1900]
+          payload = json.dumps({
+              "content": message
+          }).encode("utf-8")
 
-          payload = urllib.parse.urlencode({"content": message}).encode()
+          webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
 
           request = urllib.request.Request(
-              "${DISCORD_WEBHOOK_URL}",
+              webhook_url,
               data=payload,
-              headers={"Content-Type": "application/x-www-form-urlencoded"}
+              headers={
+                  "Content-Type": "application/json"
+              },
+              method="POST"
           )
 
-          urllib.request.urlopen(request, timeout=20)
+          urllib.request.urlopen(
+              request,
+              timeout=20
+          )
 
           print(message)
           PY
