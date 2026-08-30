@@ -8,17 +8,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Fetch and send cricket news
+      - name: Fetch cricket news
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python3 - <<'PY'
           import urllib.request
-          import urllib.parse
-          import urllib.error
           import xml.etree.ElementTree as ET
-          import os
           import json
+          import os
 
           feeds = {
               "BBC Sport": "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
@@ -57,7 +55,7 @@ jobs:
                   request = urllib.request.Request(
                       url,
                       headers={
-                          "User-Agent": "CountyChampionshipDiscord/1.0"
+                          "User-Agent": "Mozilla/5.0"
                       }
                   )
 
@@ -117,25 +115,13 @@ jobs:
 
               message = "\n".join(lines)
 
-          payload = json.dumps({
-              "content": message
-          }).encode("utf-8")
-
-          webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
-
-          request = urllib.request.Request(
-              webhook_url,
-              data=payload,
-              headers={
-                  "Content-Type": "application/json"
-              },
-              method="POST"
-          )
-
-          urllib.request.urlopen(
-              request,
-              timeout=20
-          )
+          with open("discord-message.json", "w") as f:
+              json.dump({"content": message}, f)
 
           print(message)
           PY
+
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            --data @discord-message.json \
+            "$DISCORD_WEBHOOK_URL"
