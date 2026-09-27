@@ -247,33 +247,7 @@ jobs:
               return summary
 
           def main_talking_points(articles):
-              if not articles:
-                  return ""
-
-              # Build a short overview from the selected stories. Keep it
-              # factual and compact rather than declaring one story "biggest".
-              phrases = []
-
-              for article in articles[:3]:
-                  summary = summarise(article)
-                  if summary:
-                      sentence = re.split(r"(?<=[.!?])\\s+", summary)[0]
-                      phrases.append(sentence)
-
-              if not phrases:
-                  return "*Here are the main talking points from the last 24 hours.*"
-
-              if len(phrases) == 1:
-                  overview = phrases[0]
-              elif len(phrases) == 2:
-                  overview = f"{phrases[0]} {phrases[1]}"
-              else:
-                  overview = f"{phrases[0]} {phrases[1]} {phrases[2]}"
-
-              if len(overview) > 420:
-                  overview = overview[:417].rsplit(" ", 1)[0] + "..."
-
-              return f"*Here are the main talking points from the last 24 hours: {overview}*"
+              return "*Here are the top stories around the County Championship over the past 24 hours.*"
 
           date_label = now.strftime("%d %B %Y")
 
