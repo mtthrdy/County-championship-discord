@@ -41,6 +41,10 @@ jobs:
           WORCESTERSHIRE_WEBHOOK_URL: ${{ secrets.WORCESTERSHIRE_WEBHOOK_URL }}
           WARWICKSHIRE_WEBHOOK_URL: ${{ secrets.WARWICKSHIRE_WEBHOOK_URL }}
           HAMPSHIRE_WEBHOOK_URL: ${{ secrets.HAMPSHIRE_WEBHOOK_URL }}
+          KENT_WEBHOOK_URL: ${{ secrets.KENT_WEBHOOK_URL }}
+          LANCASHIRE_WEBHOOK_URL: ${{ secrets.LANCASHIRE_WEBHOOK_URL }}
+          NOTTINGHAMSHIRE_WEBHOOK_URL: ${{ secrets.NOTTINGHAMSHIRE_WEBHOOK_URL }}
+          SURREY_WEBHOOK_URL: ${{ secrets.SURREY_WEBHOOK_URL }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -72,6 +76,10 @@ jobs:
               ("Worcestershire", "https://wccc.co.uk/news/", r"/news/[^/]+/?$", "WORCESTERSHIRE_WEBHOOK_URL"),
               ("Warwickshire", "https://www.edgbaston.com/", r"/news/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
               ("Hampshire", "https://www.ageasbowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
+              ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/[^/]+/?$", "KENT_WEBHOOK_URL"),
+              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
+              ("Nottinghamshire", "https://www.trentbridge.co.uk/news/", r"/news/\d{4}/[^/]+/[^/]+\.html$", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
+              ("Surrey", "https://www.kiaoval.com/news/", r"/news/[^/]+/?$", "SURREY_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
           ]
 
