@@ -229,7 +229,9 @@ jobs:
                   continue
 
               for link in links:
-                  if link in seen:
+                  # Allow manual runs to re-fetch recent stories so formatting
+                  # and summaries can be tested without changing the schedule.
+                  if link in seen and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
                       continue
 
                   try:
