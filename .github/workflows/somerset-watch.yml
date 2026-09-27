@@ -245,7 +245,7 @@ jobs:
                               continue
 
                           match = re.search(
-                              r"https?://(?:www\\.)?glamorgancricket\\.com/news/[^&\\"<>]+",
+                              r"https?://(?:www\\.)?glamorgancricket\\.com/news/[^&\\\"<>]+",
                               href,
                               re.I
                           )
