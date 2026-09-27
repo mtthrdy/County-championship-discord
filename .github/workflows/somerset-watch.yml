@@ -32,6 +32,7 @@ jobs:
           DURHAM_WEBHOOK_URL: ${{ secrets.DURHAM_WEBHOOK_URL }}
           ESSEX_WEBHOOK_URL: ${{ secrets.ESSEX_WEBHOOK_URL }}
           GLAMORGAN_WEBHOOK_URL: ${{ secrets.GLAMORGAN_WEBHOOK_URL }}
+          GLOUCESTERSHIRE_WEBHOOK_URL: ${{ secrets.GLOUCESTERSHIRE_WEBHOOK_URL }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -54,6 +55,7 @@ jobs:
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
               ("Essex", "https://essexcricket.org.uk/news/", r"/\d{4}/\d{2}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL"),
+              ("Gloucestershire", "https://www.gloscricket.co.uk/news/", r"/news/[^/]+/?$", "GLOUCESTERSHIRE_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
           ]
 
@@ -370,7 +372,8 @@ jobs:
               "DERBYSHIRE_WEBHOOK_URL": os.environ.get("DERBYSHIRE_WEBHOOK_URL", "").strip(),
               "DURHAM_WEBHOOK_URL": os.environ.get("DURHAM_WEBHOOK_URL", "").strip(),
               "ESSEX_WEBHOOK_URL": os.environ.get("ESSEX_WEBHOOK_URL", "").strip(),
-              "GLAMORGAN_WEBHOOK_URL": os.environ.get("GLAMORGAN_WEBHOOK_URL", "").strip()
+              "GLAMORGAN_WEBHOOK_URL": os.environ.get("GLAMORGAN_WEBHOOK_URL", "").strip(),
+              "GLOUCESTERSHIRE_WEBHOOK_URL": os.environ.get("GLOUCESTERSHIRE_WEBHOOK_URL", "").strip()
           }
 
           missing = [key for key in webhooks if not webhooks[key]]
