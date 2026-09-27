@@ -51,7 +51,7 @@ jobs:
               ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
-              ("Essex", "https://www.essexcricket.org.uk/news/", r"/\d{4}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL")
+              ("Essex", "https://essexcricket.org.uk/news/", r"/\d{4}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -263,10 +263,7 @@ jobs:
               for link in links:
                   # During manual testing, allow Essex to re-evaluate recent
                   # links that were seen before its date parsing was fixed.
-                  if link in seen and not (
-                      os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-                      and county == "Essex"
-                  ):
+                  if link in seen:
                       continue
 
                   try:
