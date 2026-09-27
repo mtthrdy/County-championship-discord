@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -30,6 +30,7 @@ jobs:
           SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
           DERBYSHIRE_WEBHOOK_URL: ${{ secrets.DERBYSHIRE_WEBHOOK_URL }}
           DURHAM_WEBHOOK_URL: ${{ secrets.DURHAM_WEBHOOK_URL }}
+          ESSEX_WEBHOOK_URL: ${{ secrets.ESSEX_WEBHOOK_URL }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -49,7 +50,8 @@ jobs:
               # Launching with Somerset first.
               ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
-              ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL")
+              ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
+              ("Essex", "https://www.essexcricket.org.uk/category/news/", r"/\d{4}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -213,7 +215,8 @@ jobs:
           webhooks = {
               "SOMERSET_WEBHOOK_URL": os.environ.get("SOMERSET_WEBHOOK_URL", "").strip(),
               "DERBYSHIRE_WEBHOOK_URL": os.environ.get("DERBYSHIRE_WEBHOOK_URL", "").strip(),
-              "DURHAM_WEBHOOK_URL": os.environ.get("DURHAM_WEBHOOK_URL", "").strip()
+              "DURHAM_WEBHOOK_URL": os.environ.get("DURHAM_WEBHOOK_URL", "").strip(),
+              "ESSEX_WEBHOOK_URL": os.environ.get("ESSEX_WEBHOOK_URL", "").strip()
           }
 
           missing = [key for key in webhooks if not webhooks[key]]
