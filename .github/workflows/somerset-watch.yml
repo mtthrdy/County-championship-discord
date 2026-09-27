@@ -28,6 +28,7 @@ jobs:
       - name: Collect new county news
         env:
           SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
+          DERBYSHIRE_WEBHOOK_URL: ${{ secrets.DERBYSHIRE_WEBHOOK_URL }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -45,7 +46,8 @@ jobs:
 
           COUNTIES = [
               # Launching with Somerset first.
-              ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/")
+              ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
+              ("Derbyshire", "https://derbyshireccc.com/news/", r"/news/", "DERBYSHIRE_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -206,10 +208,15 @@ jobs:
 
               return links[:8]
 
-          webhook = os.environ.get("SOMERSET_WEBHOOK_URL", "").strip()
-          if not webhook:
-              print("SOMERSET_WEBHOOK_URL is not configured; stopping before any stories are marked as seen.")
-              raise SystemExit(0)
+          webhooks = {
+              "SOMERSET_WEBHOOK_URL": os.environ.get("SOMERSET_WEBHOOK_URL", "").strip(),
+              "DERBYSHIRE_WEBHOOK_URL": os.environ.get("DERBYSHIRE_WEBHOOK_URL", "").strip()
+          }
+
+          missing = [key for key in webhooks if not webhooks[key]]
+          if missing:
+              print("Missing webhook secret(s): " + ", ".join(missing))
+              raise SystemExit(1)
 
           now = datetime.now(timezone.utc)
 
@@ -222,7 +229,7 @@ jobs:
           found = []
           checked_links = set()
 
-          for county, index_url, pattern in COUNTIES:
+          for county, index_url, pattern, webhook_key in COUNTIES:
               try:
                   links = candidate_links(index_url, pattern)
               except Exception as e:
@@ -257,6 +264,7 @@ jobs:
 
                   found.append({
                       "county": county,
+                      "webhook_key": webhook_key,
                       "title": title,
                       "description": description,
                       "link": link,
@@ -311,60 +319,63 @@ jobs:
                   return "🏏"
               return "📰"
 
-          lines = [
-              f"🏏 **Somerset County Watch - {now.strftime('%d %B %Y')}**",
-              "*Here are the latest stories from Somerset County Cricket Club.*",
-              ""
-          ]
+          # Deliver one bulletin per county, to that county's webhook.
+          delivered_links = set()
 
-          for item in found:
-              summary = item["description"]
-              if len(summary) > 260:
-                  summary = summary[:257].rsplit(" ", 1)[0] + "..."
-              emoji = story_emoji(item)
+          for county, _, _, webhook_key in COUNTIES:
+              county_items = [item for item in found if item["webhook_key"] == webhook_key]
+              if not county_items:
+                  continue
 
-              if summary:
+              lines = [
+                  f"🏏 **{county} County Watch - {now.strftime('%d %B %Y')}**",
+                  f"*Here are the latest stories from {county} County Cricket Club.*",
+                  ""
+              ]
+
+              for item in county_items:
+                  summary = item["description"]
+                  if len(summary) > 260:
+                      summary = summary[:257].rsplit(" ", 1)[0] + "..."
+                  emoji = story_emoji(item)
+
+                  if summary:
+                      lines.append(f"{emoji} **{item['title']}** {summary}")
+                  else:
+                      lines.append(f"{emoji} **{item['title']}**")
+
                   lines.append(
-                      f"{emoji} **{item['title']}** {summary}"
+                      f"*Official county site ·* **[Read the full story →]({item['link']})**"
                   )
-              else:
-                  lines.append(
-                      f"{emoji} **{item['title']}**"
-                  )
+                  lines.append("")
 
-              lines.append(
-                  f"*Official county site ·* **[Read the full story →]({item['link']})**"
+              message = "\n".join(lines)
+              if len(message) > 1900:
+                  message = message[:1897].rsplit("\n", 1)[0] + "..."
+
+              print(message)
+
+              webhook = webhooks[webhook_key]
+              request = urllib.request.Request(
+                  webhook,
+                  data=json.dumps({"content": message, "flags": 4}).encode("utf-8"),
+                  headers={
+                      "Content-Type": "application/json",
+                      "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
+                  },
+                  method="POST"
               )
-              lines.append("")
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      print(f"{county} Discord response: {response.status}")
+                      delivered_links.update(item["link"] for item in county_items)
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode("utf-8", errors="replace")
+                  print(f"{county} Discord webhook HTTP {e.code}: {body}")
+                  raise
 
-          message = "\n".join(lines)
-          if len(message) > 1900:
-              message = message[:1897].rsplit("\n", 1)[0] + "..."
-
-          with open("county-watch-message.json", "w", encoding="utf-8") as f:
-              json.dump({"content": message, "flags": 4}, f)
-
-          print(message)
-
-          request = urllib.request.Request(
-              webhook,
-              data=json.dumps({"content": message, "flags": 4}).encode("utf-8"),
-              headers={
-                  "Content-Type": "application/json",
-                  "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
-              },
-              method="POST"
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  print(f"Discord response: {response.status}")
-          except urllib.error.HTTPError as e:
-              body = e.read().decode("utf-8", errors="replace")
-              print(f"Discord webhook HTTP {e.code}: {body}")
-              raise
-
-          # Discord accepted the message, so now persist everything we checked.
-          for link in checked_links:
+          # Only mark stories as seen after their county's Discord delivery succeeds.
+          for link in delivered_links:
               seen.setdefault(link, now.isoformat())
 
           if len(seen) > 1000:
