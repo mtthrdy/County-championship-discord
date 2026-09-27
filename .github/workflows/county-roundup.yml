@@ -218,8 +218,7 @@ jobs:
           date_label = now.strftime("%d %B %Y")
 
           lines = [
-              "🏏 **COUNTY CHAMPIONSHIP — DAILY BRIEF**",
-              f"*{date_label}*",
+              f"**County Championship Round-up - {now.strftime('%d %B %Y')}**",
               ""
           ]
 
@@ -267,7 +266,11 @@ jobs:
               message = message[:1897].rsplit("\n", 1)[0] + "..."
 
           with open("discord-message.json", "w") as f:
-              json.dump({"content": message}, f)
+              json.dump({
+                  "content": message,
+                  # Discord flag 4 suppresses automatic link preview embeds.
+                  "flags": 4
+              }, f)
 
           print(message)
           PY
