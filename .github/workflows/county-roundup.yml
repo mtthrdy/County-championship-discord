@@ -239,15 +239,8 @@ jobs:
                   if summary:
                       lines.append(summary)
 
-                  if article["counties"]:
-                      lines.append(
-                          f"*{division_label} • {', '.join(article['counties'][:3])}*"
-                      )
-                  else:
-                      lines.append(f"*{division_label}*")
-
                   lines.append(
-                      f"**[Read the full story →]({article['link']})**"
+                      f"*{article['source']} ·* **[Read the full story →]({article['link']})**"
                   )
                   lines.append("")
 
