@@ -53,7 +53,7 @@ jobs:
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
               ("Essex", "https://essexcricket.org.uk/news/", r"/\d{4}/\d{2}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL"),
-              ("Glamorgan", "https://glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
+              ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
