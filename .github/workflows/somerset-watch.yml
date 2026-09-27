@@ -258,11 +258,11 @@ jobs:
                   print(f"{county}: index failed: {e}")
                   continue
 
+              print(f"{county}: found {len(links)} candidate links.")
+
               for link in links:
                   if link in seen:
                       continue
-
-                  checked_links.add(link)
 
                   try:
                       html = fetch(link)
@@ -272,18 +272,24 @@ jobs:
                       continue
 
                   if not title or not published:
+                      print(f"{county}: skipped {link} - title/date missing (title={bool(title)}, published={published})")
                       continue
                   if published < cutoff or published > now + timedelta(minutes=10):
+                      print(f"{county}: skipped {link} - published {published.isoformat()} outside lookback")
                       continue
 
+                  checked_links.add(link)
                   text = f"{title} {description}".lower()
                   if any(term in text for term in EXCLUDE_TERMS):
+                      print(f"{county}: filtered {title}")
                       continue
 
                   score = sum(1 for term in IMPORTANT_TERMS if term in text)
                   if score == 0:
+                      print(f"{county}: skipped {title} - no important terms")
                       continue
 
+                  print(f"{county}: qualifying story - {title}")
                   found.append({
                       "county": county,
                       "webhook_key": webhook_key,
