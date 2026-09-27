@@ -328,12 +328,6 @@ jobs:
           checked_links = set()
 
           for county, index_url, pattern, webhook_key in COUNTIES:
-              try:
-                  links = candidate_links(index_url, pattern)
-              except Exception as e:
-                  print(f"{county}: index failed: {e}")
-                  continue
-
               if county == "Glamorgan":
                   try:
                       rss_stories = glamorgan_rss_stories()
