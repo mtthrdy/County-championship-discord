@@ -27,7 +27,7 @@ jobs:
 
       - name: Collect new county news
         env:
-          COUNTY_WATCH_WEBHOOK_URL: ${{ secrets.COUNTY_WATCH_WEBHOOK_URL }}
+          SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
         run: |
           python3 - <<'PY'
           import json
@@ -42,24 +42,8 @@ jobs:
           from bs4 import BeautifulSoup
 
           COUNTIES = [
-              ("Surrey", "https://www.kiaoval.com/latest-news/", r"/(?:latest-news|category|news)/"),
-              ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/"),
-              ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/"),
-              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/"),
-              ("Essex", "https://essexcricket.org.uk/news/", r"/news/"),
-              ("Sussex", "https://sussexcricket.co.uk/news", r"/news/"),
-              ("Hampshire", "https://www.utilitabowl.com/cricket/news/", r"/cricket/news/"),
-              ("Nottinghamshire", "https://www.trentbridge.co.uk/news/2026/index.html", r"/news/2026/"),
-              ("Warwickshire", "https://www.edgbaston.com/news", r"/news/"),
-              ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/"),
-              ("Leicestershire", "https://leicestershireccc.co.uk/news/", r"/news/"),
-              ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/"),
-              ("Worcestershire", "https://wccc.co.uk/news/", r"/news/"),
-              ("Middlesex", "https://www.middlesexccc.com/news", r"/news/"),
-              ("Derbyshire", "https://derbyshireccc.com/news/", r"/(?:news|20\d{2})/"),
-              ("Northamptonshire", "https://nccc.co.uk/news/", r"/news/"),
-              ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/"),
-              ("Gloucestershire", "https://www.gloscricket.co.uk/news/", r"/news/")
+              # Launching with Somerset first.
+              ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -192,9 +176,9 @@ jobs:
 
               return links[:8]
 
-          webhook = os.environ.get("COUNTY_WATCH_WEBHOOK_URL", "").strip()
+          webhook = os.environ.get("SOMERSET_WEBHOOK_URL", "").strip()
           if not webhook:
-              print("COUNTY_WATCH_WEBHOOK_URL is not configured; stopping before any stories are marked as seen.")
+              print("SOMERSET_WEBHOOK_URL is not configured; stopping before any stories are marked as seen.")
               raise SystemExit(0)
 
           now = datetime.now(timezone.utc)
