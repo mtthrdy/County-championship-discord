@@ -272,9 +272,24 @@ jobs:
               print("No new qualifying county stories found.")
               raise SystemExit(0)
 
+          def story_emoji(item):
+              text = (item["title"] + " " + item["description"]).lower()
+
+              if re.search(r"\\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
+                  return "🏆"
+              if re.search(r"\\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
+                  return "🎯"
+              if re.search(r"\\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
+                  return "💯"
+              if re.search(r"\\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day\\b", text):
+                  return "🔥"
+              if re.search(r"\\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
+                  return "🏏"
+              return "📰"
+
           lines = [
-              f"🗞️ **County Watch - {now.strftime('%d %B %Y')}**",
-              "*New stories from official county websites.*",
+              f"🏏 **Somerset County Watch - {now.strftime('%d %B %Y')}**",
+              "*Here are the latest stories from Somerset County Cricket Club.*",
               ""
           ]
 
@@ -282,14 +297,19 @@ jobs:
               summary = item["description"]
               if len(summary) > 260:
                   summary = summary[:257].rsplit(" ", 1)[0] + "..."
+              emoji = story_emoji(item)
+
+              if summary:
+                  lines.append(
+                      f"{emoji} **{item['title']}** {summary}"
+                  )
+              else:
+                  lines.append(
+                      f"{emoji} **{item['title']}**"
+                  )
 
               lines.append(
-                  f"🏏 **{item['county']} — {item['title']}**"
-              )
-              if summary:
-                  lines.append(summary)
-              lines.append(
-                  f"*[Official county site ·]* **[Read the full story →]({item['link']})**"
+                  f"*Official county site ·* **[Read the full story →]({item['link']})**"
               )
               lines.append("")
 
