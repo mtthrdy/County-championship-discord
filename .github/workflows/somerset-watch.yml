@@ -47,7 +47,7 @@ jobs:
           COUNTIES = [
               # Launching with Somerset first.
               ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
-              ("Derbyshire", "https://derbyshireccc.com/news/", r"/news/", "DERBYSHIRE_WEBHOOK_URL")
+              ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
