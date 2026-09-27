@@ -249,46 +249,47 @@ jobs:
           def main_talking_points(articles):
               return "*Here are the top stories around the County Championship over the past 24 hours.*"
 
+          def story_emoji(article):
+              text = (article["title"] + " " + article["description"]).lower()
+
+              if re.search(r"\\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
+                  return "🏆"
+              if re.search(r"\\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
+                  return "🎯"
+              if re.search(r"\\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
+                  return "💯"
+              if re.search(r"\\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day", text):
+                  return "🔥"
+              if re.search(r"\\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
+                  return "🏏"
+              return "📰"
+
           date_label = now.strftime("%d %B %Y")
 
           lines = [
               f"🏏 **County Championship Round-up - {now.strftime('%d %B %Y')}**",
-              "",
               "*Here are the top stories around the County Championship over the past 24 hours.*",
-              "",
-              "━━━━━━━━━━━━━━━━━━━━",
               ""
           ]
 
           if articles:
-              intro = main_talking_points(articles)
-              if intro:
-                  lines.append(intro)
-                  lines.append("")
-
-              for index, article in enumerate(articles, 1):
+              for article in articles:
                   summary = summarise(article)
-
-
+                  emoji = story_emoji(article)
 
                   if summary:
                       lines.append(
-                          f"**{index}. {article['title']}** {summary}"
+                          f"{emoji} **{article['title']}** {summary}"
                       )
                   else:
                       lines.append(
-                          f"**{index}. {article['title']}**"
+                          f"{emoji} **{article['title']}**"
                       )
 
                   lines.append(
                       f"*{article['source']} ·* **[Read the full story →]({article['link']})**"
                   )
-
-                  if index < len(articles):
-                      lines.append("")
-                      lines.append("━━━━━━━━━━━━━━━━━━━━")
-                      lines.append("")
-
+                  lines.append("")
 
           else:
               lines.append(
