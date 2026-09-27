@@ -192,6 +192,11 @@ jobs:
 
               return links[:8]
 
+          webhook = os.environ.get("COUNTY_WATCH_WEBHOOK_URL", "").strip()
+          if not webhook:
+              print("COUNTY_WATCH_WEBHOOK_URL is not configured; stopping before any stories are marked as seen.")
+              raise SystemExit(0)
+
           now = datetime.now(timezone.utc)
           cutoff = now - timedelta(hours=2)
           found = []
@@ -304,11 +309,6 @@ jobs:
               json.dump({"content": message, "flags": 4}, f)
 
           print(message)
-
-          webhook = os.environ.get("COUNTY_WATCH_WEBHOOK_URL", "").strip()
-          if not webhook:
-              print("COUNTY_WATCH_WEBHOOK_URL is not configured; collection completed without posting.")
-              raise SystemExit(0)
 
           request = urllib.request.Request(
               webhook,
