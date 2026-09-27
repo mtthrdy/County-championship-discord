@@ -220,6 +220,7 @@ jobs:
           cutoff = now - timedelta(hours=lookback_hours)
           print(f"Looking back {lookback_hours} hours.")
           found = []
+          checked_links = set()
 
           for county, index_url, pattern in COUNTIES:
               try:
@@ -229,10 +230,10 @@ jobs:
                   continue
 
               for link in links:
-                  # Allow manual runs to re-fetch recent stories so formatting
-                  # and summaries can be tested without changing the schedule.
-                  if link in seen and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+                  if link in seen:
                       continue
+
+                  checked_links.add(link)
 
                   try:
                       html = fetch(link)
@@ -274,31 +275,24 @@ jobs:
               reverse=True
           )
 
-          # Mark everything discovered in this run as seen, including filtered
-          # articles, so the bot doesn't repeatedly inspect the same links.
-          for item in found:
-              seen[item["link"]] = now.isoformat()
-
-          # Also remember candidate links we inspected, even if filtered.
-          # This prevents repeated fetching of the same articles every hour.
-          for county, index_url, pattern in COUNTIES:
-              try:
-                  for link in candidate_links(index_url, pattern):
-                      seen.setdefault(link, now.isoformat())
-              except Exception:
-                  pass
-
-          # Keep the state file bounded.
-          if len(seen) > 1000:
-              recent = sorted(seen.items(), key=lambda x: x[1], reverse=True)[:800]
-              seen = dict(recent)
-
-          with open(STATE_PATH, "w", encoding="utf-8") as f:
-              json.dump(seen, f, indent=2)
+          # Do not write seen-state yet. A story should only become
+          # "seen" after Discord has accepted the message successfully.
 
           found = found[:10]
 
           if not found:
+              # No Discord delivery is needed, so it is safe to persist the
+              # links we checked and filtered out.
+              for link in checked_links:
+                  seen.setdefault(link, now.isoformat())
+
+              if len(seen) > 1000:
+                  recent = sorted(seen.items(), key=lambda x: x[1], reverse=True)[:800]
+                  seen = dict(recent)
+
+              with open(STATE_PATH, "w", encoding="utf-8") as f:
+                  json.dump(seen, f, indent=2)
+
               print("No new qualifying county stories found.")
               raise SystemExit(0)
 
@@ -368,6 +362,17 @@ jobs:
               body = e.read().decode("utf-8", errors="replace")
               print(f"Discord webhook HTTP {e.code}: {body}")
               raise
+
+          # Discord accepted the message, so now persist everything we checked.
+          for link in checked_links:
+              seen.setdefault(link, now.isoformat())
+
+          if len(seen) > 1000:
+              recent = sorted(seen.items(), key=lambda x: x[1], reverse=True)[:800]
+              seen = dict(recent)
+
+          with open(STATE_PATH, "w", encoding="utf-8") as f:
+              json.dump(seen, f, indent=2)
           PY
 
       - name: Save seen-state
