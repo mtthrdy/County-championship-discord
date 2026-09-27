@@ -68,7 +68,7 @@ jobs:
           def clean_text(value):
               value = html.unescape(value or "")
               value = re.sub(r"<[^>]+>", " ", value)
-              value = re.sub(r"\\s+", " ", value)
+              value = re.sub(r"\s+", " ", value)
               return value.strip()
 
           def fetch_feed(source, division, url):
@@ -112,7 +112,7 @@ jobs:
 
                       county_matches = [
                           county for county in counties
-                          if re.search(r"\\b" + re.escape(county.lower()) + r"\\b", text)
+                          if re.search(r"\b" + re.escape(county.lower()) + r"\b", text)
                       ]
 
                       articles.append({
@@ -205,9 +205,9 @@ jobs:
 
               # RSS descriptions can be very long. Keep the useful first
               # sentence(s), while avoiding a wall of text in Discord.
-              description = re.sub(r"\\s+", " ", description).strip()
+              description = re.sub(r"\s+", " ", description).strip()
 
-              sentences = re.split(r"(?<=[.!?])\\s+", description)
+              sentences = re.split(r"(?<=[.!?])\s+", description)
               summary = " ".join(sentences[:2]).strip()
 
               if len(summary) > 300:
