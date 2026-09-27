@@ -207,41 +207,109 @@ jobs:
               return title, description, published
 
           def glamorgan_rss_stories():
-              # Glamorgan blocks GitHub Actions with HTTP 403. Use Google News RSS
-              # only as a discovery layer, while retaining official Glamorgan URLs.
-              rss_url = (
-                  "https://news.google.com/rss/search?"
-                  "q=site%3Aglamorgancricket.com%2Fnews%2F%20Glamorgan%20Cricket"
-                  "&hl=en-GB&gl=GB&ceid=GB%3Aen"
-              )
-              html = fetch(rss_url)
-              root = ET.fromstring(html)
-              stories = []
-              for item in root.findall(".//item"):
-                  title = clean(item.findtext("title", ""))
-                  link = clean(item.findtext("link", ""))
-                  description = clean(item.findtext("description", ""))
-                  pub_date = parse_date(item.findtext("pubDate", ""))
-                  if not title or not link or not pub_date:
-                      continue
+              # Glamorgan blocks GitHub Actions with HTTP 403. Use public search/news
+              # services only as a discovery layer, while retaining official URLs.
+              # Try multiple discovery routes because any single search feed can
+              # omit or rewrite the destination URL.
+              queries = [
+                  "site:glamorgancricket.com/news/ Glamorgan Cricket",
+                  "site:glamorgancricket.com/news/ Glamorgan County Cricket"
+              ]
+
+              feeds = [
+                  (
+                      "Bing News RSS",
+                      "https://www.bing.com/news/search?format=rss&q="
+                      + urllib.parse.quote(queries[0])
+                  ),
+                  (
+                      "Google News RSS",
+                      "https://news.google.com/rss/search?q="
+                      + urllib.parse.quote(queries[0])
+                      + "&hl=en-GB&gl=GB&ceid=GB%3Aen"
+                  ),
+              ]
+
+              stories = {}
+
+              def official_url_from_link(link):
+                  if "glamorgancricket.com/news/" in link:
+                      return link.split("#", 1)[0].rstrip("/")
                   try:
                       request = urllib.request.Request(
                           link,
                           headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
                       )
                       with urllib.request.urlopen(request, timeout=20) as response:
-                          official_url = response.geturl()
+                          final_url = response.geturl()
+                          if "glamorgancricket.com/news/" in final_url:
+                              return final_url.split("#", 1)[0].rstrip("/")
                   except Exception:
-                      official_url = link
-                  if "glamorgancricket.com/news/" not in official_url:
+                      pass
+                  return ""
+
+              for feed_name, feed_url in feeds:
+                  try:
+                      data = fetch(feed_url)
+                      root = ET.fromstring(data)
+                  except Exception as e:
+                      print(f"Glamorgan: {feed_name} failed: {e}")
                       continue
-                  stories.append({
-                      "title": title,
-                      "description": re.sub(r"<[^>]+>", " ", description),
-                      "link": official_url.split("#", 1)[0].rstrip("/"),
-                      "published": pub_date
-                  })
-              return stories[:8]
+
+                  for item in root.findall(".//item"):
+                      title = clean(item.findtext("title", ""))
+                      link = clean(item.findtext("link", ""))
+                      description = clean(item.findtext("description", ""))
+                      pub_date = parse_date(item.findtext("pubDate", ""))
+                      if not title or not link or not pub_date:
+                          continue
+
+                      official_url = official_url_from_link(link)
+                      if not official_url:
+                          continue
+
+                      stories[official_url] = {
+                          "title": title,
+                          "description": re.sub(r"<[^>]+>", " ", description),
+                          "link": official_url,
+                          "published": pub_date
+                      }
+
+              # Last-resort discovery: Bing's normal web search. This does not
+              # fetch the Glamorgan site; it only extracts indexed official URLs.
+              if not stories:
+                  for query in queries:
+                      try:
+                          search_url = (
+                              "https://www.bing.com/search?q="
+                              + urllib.parse.quote(query)
+                          )
+                          html = fetch(search_url).decode("utf-8", errors="replace")
+                          soup = BeautifulSoup(html, "html.parser")
+
+                          for a in soup.find_all("a", href=True):
+                              href = a.get("href", "")
+                              official_url = official_url_from_link(href)
+                              if not official_url:
+                                  continue
+
+                              title = clean(a.get_text(" ", strip=True))
+                              if not title:
+                                  continue
+
+                              stories.setdefault(official_url, {
+                                  "title": title,
+                                  "description": "",
+                                  "link": official_url,
+                                  "published": now
+                              })
+                      except Exception as e:
+                          print(f"Glamorgan: Bing web discovery failed: {e}")
+
+                      if stories:
+                          break
+
+              return list(stories.values())[:8]
 
           def candidate_links(index_url, pattern):
               html = fetch(index_url)
