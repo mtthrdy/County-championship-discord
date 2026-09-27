@@ -142,51 +142,52 @@ jobs:
               seen.add(key)
               unique.append(article)
 
-          # Score stories for editorial importance rather than simply using
-          # newest-first ordering.
-          importance_terms = {
-              "champion": 12,
-              "champions": 12,
-              "title": 10,
-              "promoted": 10,
-              "promotion": 10,
-              "relegated": 10,
-              "relegation": 10,
-              "survive": 8,
-              "survival": 8,
-              "win": 6,
-              "wins": 6,
-              "victory": 6,
-              "defeat": 6,
-              "beaten": 6,
-              "century": 5,
-              "hundred": 5,
-              "five-wicket": 5,
-              "five wicket": 5,
-              "hat-trick": 7,
-              "hat trick": 7,
-              "record": 5,
-              "thriller": 4
-          }
+          # Editorial scoring: prioritise competition-defining events,
+          # then major individual performances and dramatic results.
+          importance_rules = [
+              (r"\\bchampions?\\b", 20),
+              (r"\\btitle\\b", 14),
+              (r"\\bpromot(?:ed|ion)\\b", 18),
+              (r"\\brelegat(?:ed|ion)\\b", 18),
+              (r"\\bsurviv(?:e|es|ed|al)\\b", 12),
+              (r"\\bfinal[- ]day\\b", 7),
+              (r"\\binnings? (?:and|by)\\b", 8),
+              (r"\\bone[- ]wicket\\b", 10),
+              (r"\\b(?:two|three|four)[- ]wicket\\b", 5),
+              (r"\\b(?:five|six|seven|eight|nine|ten)[- ]wicket\\b", 9),
+              (r"\\bhat[- ]trick\\b", 12),
+              (r"\\b\\d{3}\\b", 10),
+              (r"\\b\\d{2,3}\\s*\\b(?:runs?|wickets?)\\b", 5),
+              (r"\\bcentur(?:y|ies)\\b", 7),
+              (r"\\bfive[- ]for\\b", 8),
+              (r"\\brecord\\b", 7),
+              (r"\\bthriller\\b", 7),
+              (r"\\bdramatic\\b", 5),
+              (r"\\bwin(?:s|ning)?\\b", 6),
+              (r"\\bvictory\\b", 6),
+              (r"\\bdefeat(?:s|ed)?\\b", 4),
+              (r"\\bbeaten\\b", 4)
+          ]
 
           for article in unique:
               haystack = (article["title"] + " " + article["description"]).lower()
               score = 0
 
-              for term, points in importance_terms.items():
-                  if term in haystack:
+              for pattern, points in importance_rules:
+                  if re.search(pattern, haystack):
                       score += points
 
-              # Freshness breaks ties between similarly important stories.
+              # Dedicated series feeds are preferable to generic coverage.
+              if article["division"] in ("Division One", "Division Two"):
+                  score += 4
+
+              # Freshness only breaks close calls; it should not overpower
+              # genuinely important Championship developments.
               age_hours = max(
                   0,
                   (now - article["published"]).total_seconds() / 3600
               )
-              score += max(0, 3 - age_hours / 8)
-
-              # Dedicated series feeds get a small source bonus.
-              if article["division"] in ("Division One", "Division Two"):
-                  score += 2
+              score += max(0, 2 - age_hours / 12)
 
               article["score"] = score
 
@@ -203,17 +204,62 @@ jobs:
               if not description:
                   return ""
 
-              # RSS descriptions can be very long. Keep the useful first
-              # sentence(s), while avoiding a wall of text in Discord.
-              description = re.sub(r"\s+", " ", description).strip()
+              description = re.sub(r"\\s+", " ", description).strip()
 
-              sentences = re.split(r"(?<=[.!?])\s+", description)
-              summary = " ".join(sentences[:2]).strip()
+              # Remove common RSS boilerplate and avoid repeating the headline.
+              description = re.sub(
+                  r"^(?:county championship|county cricket)[:\-–—]?\\s*",
+                  "",
+                  description,
+                  flags=re.I
+              )
+
+              title_words = set(
+                  re.findall(r"[a-z0-9']+", article["title"].lower())
+              )
+              sentences = re.split(r"(?<=[.!?])\\s+", description)
+
+              useful = []
+              for sentence in sentences:
+                  sentence = sentence.strip()
+                  if not sentence:
+                      continue
+
+                  words = set(
+                      re.findall(r"[a-z0-9']+", sentence.lower())
+                  )
+
+                  # Skip a sentence that mostly repeats the headline.
+                  overlap = len(title_words & words) / max(1, len(words))
+                  if overlap >= 0.65 and useful:
+                      continue
+
+                  useful.append(sentence)
+
+                  if len(" ".join(useful)) >= 260 or len(useful) >= 2:
+                      break
+
+              summary = " ".join(useful).strip()
 
               if len(summary) > 300:
                   summary = summary[:297].rsplit(" ", 1)[0] + "..."
 
               return summary
+
+          def lead_story_intro(articles):
+              if not articles:
+                  return ""
+
+              lead = articles[0]
+              title = lead["title"]
+              summary = summarise(lead)
+
+              # A compact editorial intro that tells the reader why today's
+              # lead story matters, without simply repeating its headline.
+              if summary:
+                  first_sentence = re.split(r"(?<=[.!?])\\s+", summary)[0]
+                  return f"*The biggest story today: {first_sentence}*"
+              return f"*The biggest story today is {title.lower()}.*"
 
           date_label = now.strftime("%d %B %Y")
 
@@ -223,15 +269,17 @@ jobs:
           ]
 
           if articles:
-              for index, article in enumerate(articles, 1):
-                  division = article["division"]
-                  division_label = (
-                      "Division One" if division == "Division One"
-                      else "Division Two" if division == "Division Two"
-                      else "County Championship"
-                  )
+              intro = lead_story_intro(articles)
+              if intro:
+                  lines.append(intro)
+                  lines.append("")
 
+              for index, article in enumerate(articles, 1):
                   summary = summarise(article)
+
+                  if index == 1:
+                      lines.append("**🏆 THE BIG STORY**")
+                      lines.append("")
 
                   if summary:
                       lines.append(
