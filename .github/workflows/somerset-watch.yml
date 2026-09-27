@@ -207,73 +207,103 @@ jobs:
               return title, description, published
 
           def glamorgan_rss_stories():
-              # Glamorgan blocks GitHub Actions directly with HTTP 403.
-              # Jina Reader acts as a public fetch proxy, allowing us to read
-              # the same public pages without bypassing the site's access controls.
-              proxy_index = "https://r.jina.ai/https://www.glamorgancricket.com/news/"
-              data = fetch(proxy_index).decode("utf-8", errors="replace")
+              # Glamorgan blocks GitHub Actions with HTTP 403. Discover official
+              # articles through public search indexes instead of fetching the
+              # Glamorgan site directly.
+              queries = [
+                  "site:glamorgancricket.com/news/ Glamorgan cricket",
+                  "site:glamorgancricket.com/news/ Glamorgan Essex",
+                  "site:glamorgancricket.com/news/ County Championship Glamorgan"
+              ]
 
-              # Jina returns Markdown links. Extract only official Glamorgan news URLs.
-              url_pattern = re.compile(
-                  r"https?://(?:www\\.)?glamorgancricket\\.com/news/[A-Za-z0-9%_./?&=+\-–’'()]+",
-                  re.I
-              )
+              stories = {}
 
-              urls = []
-              for raw in url_pattern.findall(data):
-                  url = raw.rstrip(".,);]\\\"'")
-                  if url not in urls:
-                      urls.append(url)
+              def add_result(url, title, description="", published=None):
+                  if "glamorgancricket.com/news/" not in url:
+                      return
+                  url = url.split("#", 1)[0].rstrip("/")
+                  if not title:
+                      return
+                  stories[url] = {
+                      "title": clean(title),
+                      "description": clean(description),
+                      "link": url,
+                      "published": published or now
+                  }
 
-              stories = []
-              for url in urls[:12]:
+              # Google Search result pages expose indexed official URLs even when
+              # the source site blocks GitHub's IP range.
+              for query in queries:
+                  search_url = "https://www.google.com/search?q=" + urllib.parse.quote(query) + "&num=20&hl=en-GB"
                   try:
-                      article_data = fetch(
-                          "https://r.jina.ai/" + url
-                      ).decode("utf-8", errors="replace")
-                  except Exception as e:
-                      print(f"Glamorgan: article proxy failed {url}: {e}")
-                      continue
+                      html = fetch(search_url).decode("utf-8", errors="replace")
+                      soup = BeautifulSoup(html, "html.parser")
 
-                  lines = [clean(line.strip("# ").strip()) for line in article_data.splitlines()]
-                  lines = [line for line in lines if line]
+                      for a in soup.find_all("a", href=True):
+                          href = a.get("href", "")
+                          if "glamorgancricket.com/news/" not in href:
+                              continue
 
-                  title = ""
-                  published = None
-                  description_parts = []
-
-                  for line in lines[:40]:
-                      if not title and len(line) > 10 and not line.startswith(("http://", "https://")):
-                          # The first substantial non-navigation heading is normally
-                          # the article title in Jina's Markdown output.
-                          if not re.match(r"^(Latest News|Filter news|Read More|Glamorgan Cricket)$", line, re.I):
-                              title = line
-
-                      if not published:
-                          date_match = re.search(
-                              r"\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(2026)\b",
-                              line,
+                          match = re.search(
+                              r"https?://(?:www\\.)?glamorgancricket\\.com/news/[^&\\"<>]+",
+                              href,
                               re.I
                           )
-                          if date_match:
-                              published = parse_date(date_match.group(0))
+                          if not match:
+                              continue
 
-                      if title and published and len(description_parts) < 2:
-                          if len(line) >= 60 and line != title:
-                              description_parts.append(line)
+                          official_url = urllib.parse.unquote(match.group(0))
+                          title = clean(a.get_text(" ", strip=True))
+                          if title:
+                              add_result(official_url, title)
 
-                  if not title or not published:
-                      continue
+                      # Also inspect the rendered text for direct official URLs.
+                      for match in re.findall(
+                          r"https?://(?:www\\.)?glamorgancricket\\.com/news/[A-Za-z0-9%_./?&=+\-–’'()]+",
+                          html,
+                          re.I
+                      ):
+                          add_result(urllib.parse.unquote(match), "Glamorgan Cricket news")
+                  except Exception as e:
+                      print(f"Glamorgan: Google search failed: {e}")
 
-                  stories.append({
-                      "title": title,
-                      "description": " ".join(description_parts),
-                      "link": url.split("#", 1)[0].rstrip("/"),
-                      "published": published
-                  })
+              # DuckDuckGo HTML is a second independent index.
+              if len(stories) < 3:
+                  for query in queries:
+                      try:
+                          search_url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+                          html = fetch(search_url).decode("utf-8", errors="replace")
+                          soup = BeautifulSoup(html, "html.parser")
 
-              print(f"Glamorgan: proxy found {len(stories)} candidate stories.")
-              return stories[:8]
+                          for result in soup.select(".result"):
+                              a = result.select_one("a.result__a")
+                              if not a:
+                                  continue
+
+                              href = a.get("href", "")
+                              official_url = ""
+                              if "glamorgancricket.com/news/" in href:
+                                  official_url = href
+                              else:
+                                  # DDG often wraps the destination in uddg=.
+                                  parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                                  official_url = parsed.get("uddg", [""])[0]
+
+                              if "glamorgancricket.com/news/" not in official_url:
+                                  continue
+
+                              snippet = result.select_one(".result__snippet")
+                              add_result(
+                                  official_url,
+                                  a.get_text(" ", strip=True),
+                                  snippet.get_text(" ", strip=True) if snippet else ""
+                              )
+                      except Exception as e:
+                          print(f"Glamorgan: DuckDuckGo search failed: {e}")
+
+              result = list(stories.values())
+              print(f"Glamorgan: indexed search found {len(result)} candidate stories.")
+              return result[:8]
 
           def candidate_links(index_url, pattern):
               html = fetch(index_url)
