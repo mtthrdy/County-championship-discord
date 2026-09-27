@@ -24,6 +24,7 @@ jobs:
           import re
           from datetime import datetime, timezone, timedelta
           from email.utils import parsedate_to_datetime
+          from zoneinfo import ZoneInfo
 
           # Dedicated County Championship feeds are the primary source.
           # The global Cricinfo feed and BBC feed are retained as supplementary
@@ -66,6 +67,15 @@ jobs:
           ]
 
           now = datetime.now(timezone.utc)
+
+          # GitHub Actions cron is UTC. We run at both 07:00 and 08:00 UTC
+          # and only continue when it is actually 08:00 in London, keeping
+          # the roundup at 8am UK time across BST/GMT changes.
+          london_now = now.astimezone(ZoneInfo("Europe/London"))
+          if london_now.hour != 8:
+              print(f"Skipping scheduled run: London time is {london_now.strftime('%H:%M')}.")
+              raise SystemExit(0)
+
           cutoff = now - timedelta(hours=24)
           articles = []
 
