@@ -370,6 +370,12 @@ jobs:
                       })
                   continue
 
+              try:
+                  links = candidate_links(index_url, pattern)
+              except Exception as e:
+                  print(f"{county}: index failed: {e}")
+                  continue
+
               print(f"{county}: found {len(links)} candidate links.")
 
               for link in links:
