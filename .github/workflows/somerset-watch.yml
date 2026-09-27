@@ -51,7 +51,7 @@ jobs:
               ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
-              ("Essex", "https://www.essexcricket.org.uk/category/news/", r"/\d{4}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL")
+              ("Essex", "https://www.essexcricket.org.uk/news/", r"/\d{4}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -111,7 +111,18 @@ jobs:
                       dt = dt.replace(tzinfo=timezone.utc)
                   return dt.astimezone(timezone.utc)
               except Exception:
-                  return None
+                  pass
+
+              # Some county sites expose dates as human-readable text,
+              # e.g. "24 September 26".
+              for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y"):
+                  try:
+                      dt = datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
+                      return dt
+                  except Exception:
+                      continue
+
+              return None
 
           def article_metadata(url, html):
               soup = BeautifulSoup(html, "html.parser")
@@ -133,6 +144,11 @@ jobs:
                   description = clean(meta.get("content", ""))
 
               published = None
+
+              # Some sites expose the publication date in a <time datetime="..."> element.
+              time_tag = soup.find("time", attrs={"datetime": True})
+              if time_tag:
+                  published = parse_date(time_tag.get("datetime", ""))
 
               # Prefer structured article metadata when the page provides it.
               for script in soup.find_all("script", type="application/ld+json"):
