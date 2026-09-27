@@ -231,13 +231,16 @@ jobs:
                       else "County Championship"
                   )
 
-                  lines.append(
-                      f"**{index}. {article['title']}**"
-                  )
-
                   summary = summarise(article)
+
                   if summary:
-                      lines.append(summary)
+                      lines.append(
+                          f"**{index}. {article['title']}** — {summary}"
+                      )
+                  else:
+                      lines.append(
+                          f"**{index}. {article['title']}**"
+                      )
 
                   lines.append(
                       f"*{article['source']} ·* **[Read the full story →]({article['link']})**"
