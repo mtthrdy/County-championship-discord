@@ -37,7 +37,7 @@ jobs:
           import subprocess
           import urllib.parse
           import urllib.request
-import urllib.error
+          import urllib.error
           from datetime import datetime, timezone, timedelta
           from email.utils import parsedate_to_datetime
 
