@@ -226,6 +226,41 @@ jobs:
                   if canonical not in links:
                       links.append(canonical)
 
+              # Some sites put article URLs in data attributes, JSON, or
+              # script-generated markup rather than normal <a href> links.
+              # Fall back to extracting matching URLs directly from the raw
+              # HTML when normal anchor discovery returns nothing.
+              if not links:
+                  candidates = set()
+                  absolute_pattern = re.compile(
+                      r"https?://[^\s\"'<>]+",
+                      re.I
+                  )
+                  relative_pattern = re.compile(
+                      r"(?<![A-Za-z0-9])(/\\d{4}/\\d{2}/[^\s\"'<>]+)",
+                      re.I
+                  )
+
+                  for raw_url in absolute_pattern.findall(html):
+                      clean_url = raw_url.rstrip('\\\\\\\'.,);]}')
+                      parsed = urllib.parse.urlparse(clean_url)
+                      if parsed.netloc != base.netloc:
+                          continue
+                      if not re.search(pattern, parsed.path, re.I):
+                          continue
+                      candidates.add(clean_url.split("#", 1)[0].rstrip("/"))
+
+                  for raw_path in relative_pattern.findall(html):
+                      raw_path = raw_path.rstrip('\\\\\\\'.,);]}')
+                      parsed = urllib.parse.urlparse(raw_path)
+                      if not re.search(pattern, parsed.path, re.I):
+                          continue
+                      candidates.add(
+                          urllib.parse.urljoin(index_url, raw_path).split("#", 1)[0].rstrip("/")
+                      )
+
+                  links.extend(sorted(candidates))
+
               return links[:8]
 
           webhooks = {
