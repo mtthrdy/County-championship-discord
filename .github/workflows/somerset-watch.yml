@@ -207,109 +207,73 @@ jobs:
               return title, description, published
 
           def glamorgan_rss_stories():
-              # Glamorgan blocks GitHub Actions with HTTP 403. Use public search/news
-              # services only as a discovery layer, while retaining official URLs.
-              # Try multiple discovery routes because any single search feed can
-              # omit or rewrite the destination URL.
-              queries = [
-                  "site:glamorgancricket.com/news/ Glamorgan Cricket",
-                  "site:glamorgancricket.com/news/ Glamorgan County Cricket"
-              ]
+              # Glamorgan blocks GitHub Actions directly with HTTP 403.
+              # Jina Reader acts as a public fetch proxy, allowing us to read
+              # the same public pages without bypassing the site's access controls.
+              proxy_index = "https://r.jina.ai/https://www.glamorgancricket.com/news/"
+              data = fetch(proxy_index).decode("utf-8", errors="replace")
 
-              feeds = [
-                  (
-                      "Bing News RSS",
-                      "https://www.bing.com/news/search?format=rss&q="
-                      + urllib.parse.quote(queries[0])
-                  ),
-                  (
-                      "Google News RSS",
-                      "https://news.google.com/rss/search?q="
-                      + urllib.parse.quote(queries[0])
-                      + "&hl=en-GB&gl=GB&ceid=GB%3Aen"
-                  ),
-              ]
+              # Jina returns Markdown links. Extract only official Glamorgan news URLs.
+              url_pattern = re.compile(
+                  r"https?://(?:www\\.)?glamorgancricket\\.com/news/[A-Za-z0-9%_./?&=+\-–’'()]+",
+                  re.I
+              )
 
-              stories = {}
+              urls = []
+              for raw in url_pattern.findall(data):
+                  url = raw.rstrip(".,);]\\\"'")
+                  if url not in urls:
+                      urls.append(url)
 
-              def official_url_from_link(link):
-                  if "glamorgancricket.com/news/" in link:
-                      return link.split("#", 1)[0].rstrip("/")
+              stories = []
+              for url in urls[:12]:
                   try:
-                      request = urllib.request.Request(
-                          link,
-                          headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
-                      )
-                      with urllib.request.urlopen(request, timeout=20) as response:
-                          final_url = response.geturl()
-                          if "glamorgancricket.com/news/" in final_url:
-                              return final_url.split("#", 1)[0].rstrip("/")
-                  except Exception:
-                      pass
-                  return ""
-
-              for feed_name, feed_url in feeds:
-                  try:
-                      data = fetch(feed_url)
-                      root = ET.fromstring(data)
+                      article_data = fetch(
+                          "https://r.jina.ai/" + url
+                      ).decode("utf-8", errors="replace")
                   except Exception as e:
-                      print(f"Glamorgan: {feed_name} failed: {e}")
+                      print(f"Glamorgan: article proxy failed {url}: {e}")
                       continue
 
-                  for item in root.findall(".//item"):
-                      title = clean(item.findtext("title", ""))
-                      link = clean(item.findtext("link", ""))
-                      description = clean(item.findtext("description", ""))
-                      pub_date = parse_date(item.findtext("pubDate", ""))
-                      if not title or not link or not pub_date:
-                          continue
+                  lines = [clean(line.strip("# ").strip()) for line in article_data.splitlines()]
+                  lines = [line for line in lines if line]
 
-                      official_url = official_url_from_link(link)
-                      if not official_url:
-                          continue
+                  title = ""
+                  published = None
+                  description_parts = []
 
-                      stories[official_url] = {
-                          "title": title,
-                          "description": re.sub(r"<[^>]+>", " ", description),
-                          "link": official_url,
-                          "published": pub_date
-                      }
+                  for line in lines[:40]:
+                      if not title and len(line) > 10 and not line.startswith(("http://", "https://")):
+                          # The first substantial non-navigation heading is normally
+                          # the article title in Jina's Markdown output.
+                          if not re.match(r"^(Latest News|Filter news|Read More|Glamorgan Cricket)$", line, re.I):
+                              title = line
 
-              # Last-resort discovery: Bing's normal web search. This does not
-              # fetch the Glamorgan site; it only extracts indexed official URLs.
-              if not stories:
-                  for query in queries:
-                      try:
-                          search_url = (
-                              "https://www.bing.com/search?q="
-                              + urllib.parse.quote(query)
+                      if not published:
+                          date_match = re.search(
+                              r"\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(2026)\b",
+                              line,
+                              re.I
                           )
-                          html = fetch(search_url).decode("utf-8", errors="replace")
-                          soup = BeautifulSoup(html, "html.parser")
+                          if date_match:
+                              published = parse_date(date_match.group(0))
 
-                          for a in soup.find_all("a", href=True):
-                              href = a.get("href", "")
-                              official_url = official_url_from_link(href)
-                              if not official_url:
-                                  continue
+                      if title and published and len(description_parts) < 2:
+                          if len(line) >= 60 and line != title:
+                              description_parts.append(line)
 
-                              title = clean(a.get_text(" ", strip=True))
-                              if not title:
-                                  continue
+                  if not title or not published:
+                      continue
 
-                              stories.setdefault(official_url, {
-                                  "title": title,
-                                  "description": "",
-                                  "link": official_url,
-                                  "published": now
-                              })
-                      except Exception as e:
-                          print(f"Glamorgan: Bing web discovery failed: {e}")
+                  stories.append({
+                      "title": title,
+                      "description": " ".join(description_parts),
+                      "link": url.split("#", 1)[0].rstrip("/"),
+                      "published": published
+                  })
 
-                      if stories:
-                          break
-
-              return list(stories.values())[:8]
+              print(f"Glamorgan: proxy found {len(stories)} candidate stories.")
+              return stories[:8]
 
           def candidate_links(index_url, pattern):
               html = fetch(index_url)
