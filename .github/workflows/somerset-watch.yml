@@ -40,6 +40,7 @@ jobs:
           YORKSHIRE_WEBHOOK_URL: ${{ secrets.YORKSHIRE_WEBHOOK_URL }}
           WORCESTERSHIRE_WEBHOOK_URL: ${{ secrets.WORCESTERSHIRE_WEBHOOK_URL }}
           WARWICKSHIRE_WEBHOOK_URL: ${{ secrets.WARWICKSHIRE_WEBHOOK_URL }}
+          HAMPSHIRE_WEBHOOK_URL: ${{ secrets.HAMPSHIRE_WEBHOOK_URL }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -70,6 +71,7 @@ jobs:
               ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/[^/]+/?$", "YORKSHIRE_WEBHOOK_URL"),
               ("Worcestershire", "https://wccc.co.uk/news/", r"/news/[^/]+/?$", "WORCESTERSHIRE_WEBHOOK_URL"),
               ("Warwickshire", "https://www.edgbaston.com/", r"/news/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
+              ("Hampshire", "https://www.ageasbowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
           ]
 
