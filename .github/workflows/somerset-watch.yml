@@ -261,7 +261,12 @@ jobs:
               print(f"{county}: found {len(links)} candidate links.")
 
               for link in links:
-                  if link in seen:
+                  # During manual testing, allow Essex to re-evaluate recent
+                  # links that were seen before its date parsing was fixed.
+                  if link in seen and not (
+                      os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+                      and county == "Essex"
+                  ):
                       continue
 
                   try:
