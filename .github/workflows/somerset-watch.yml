@@ -305,7 +305,10 @@ jobs:
           request = urllib.request.Request(
               webhook,
               data=json.dumps({"content": message, "flags": 4}).encode("utf-8"),
-              headers={"Content-Type": "application/json"},
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
+              },
               method="POST"
           )
           try:
