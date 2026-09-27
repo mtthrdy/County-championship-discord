@@ -28,6 +28,7 @@ jobs:
       - name: Collect new county news
         env:
           SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json
@@ -182,7 +183,13 @@ jobs:
               raise SystemExit(0)
 
           now = datetime.now(timezone.utc)
-          cutoff = now - timedelta(hours=2)
+
+          # Manual runs use a wider window so we can test the collector even
+          # when Somerset has not published anything in the last couple of hours.
+          # Scheduled runs stay tight to avoid reposting older stories.
+          lookback_hours = 168 if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else 2
+          cutoff = now - timedelta(hours=lookback_hours)
+          print(f"Looking back {lookback_hours} hours.")
           found = []
 
           for county, index_url, pattern in COUNTIES:
