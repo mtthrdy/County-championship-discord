@@ -246,20 +246,34 @@ jobs:
 
               return summary
 
-          def lead_story_intro(articles):
+          def main_talking_points(articles):
               if not articles:
                   return ""
 
-              lead = articles[0]
-              title = lead["title"]
-              summary = summarise(lead)
+              # Build a short overview from the selected stories. Keep it
+              # factual and compact rather than declaring one story "biggest".
+              phrases = []
 
-              # A compact editorial intro that tells the reader why today's
-              # lead story matters, without simply repeating its headline.
-              if summary:
-                  first_sentence = re.split(r"(?<=[.!?])\\s+", summary)[0]
-                  return f"*The biggest story today: {first_sentence}*"
-              return f"*The biggest story today is {title.lower()}.*"
+              for article in articles[:3]:
+                  summary = summarise(article)
+                  if summary:
+                      sentence = re.split(r"(?<=[.!?])\\s+", summary)[0]
+                      phrases.append(sentence)
+
+              if not phrases:
+                  return "*Here are the main talking points from the last 24 hours.*"
+
+              if len(phrases) == 1:
+                  overview = phrases[0]
+              elif len(phrases) == 2:
+                  overview = f"{phrases[0]} {phrases[1]}"
+              else:
+                  overview = f"{phrases[0]} {phrases[1]} {phrases[2]}"
+
+              if len(overview) > 420:
+                  overview = overview[:417].rsplit(" ", 1)[0] + "..."
+
+              return f"*Here are the main talking points from the last 24 hours: {overview}*"
 
           date_label = now.strftime("%d %B %Y")
 
@@ -269,7 +283,7 @@ jobs:
           ]
 
           if articles:
-              intro = lead_story_intro(articles)
+              intro = main_talking_points(articles)
               if intro:
                   lines.append(intro)
                   lines.append("")
@@ -277,13 +291,11 @@ jobs:
               for index, article in enumerate(articles, 1):
                   summary = summarise(article)
 
-                  if index == 1:
-                      lines.append("**🏆 THE BIG STORY**")
-                      lines.append("")
+
 
                   if summary:
                       lines.append(
-                          f"**{index}. {article['title']}** — {summary}"
+                          f"**{index}. {article['title']}** {summary}"
                       )
                   else:
                       lines.append(
