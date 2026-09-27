@@ -399,8 +399,7 @@ jobs:
 
           missing = [key for key in webhooks if not webhooks[key]]
           if missing:
-              print("Missing webhook secret(s): " + ", ".join(missing))
-              raise SystemExit(1)
+              print("Webhook secret(s) not configured yet; those counties will be skipped: " + ", ".join(missing))
 
           now = datetime.now(timezone.utc)
 
@@ -414,6 +413,10 @@ jobs:
           checked_links = set()
 
           for county, index_url, pattern, webhook_key in COUNTIES:
+              if not webhooks.get(webhook_key):
+                  print(f"{county}: skipped - {webhook_key} is not configured yet.")
+                  continue
+
               if county == "Glamorgan":
                   try:
                       rss_stories = glamorgan_rss_stories()
