@@ -1,0 +1,334 @@
+name: County Website Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: county-website-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install parser
+        run: python -m pip install --disable-pip-version-check beautifulsoup4
+
+      - name: Collect new county news
+        env:
+          COUNTY_WATCH_WEBHOOK_URL: ${{ secrets.COUNTY_WATCH_WEBHOOK_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone, timedelta
+          from email.utils import parsedate_to_datetime
+
+          from bs4 import BeautifulSoup
+
+          COUNTIES = [
+              ("Surrey", "https://www.kiaoval.com/latest-news/", r"/(?:latest-news|category|news)/"),
+              ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/"),
+              ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/"),
+              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/"),
+              ("Essex", "https://essexcricket.org.uk/news/", r"/news/"),
+              ("Sussex", "https://sussexcricket.co.uk/news", r"/news/"),
+              ("Hampshire", "https://www.utilitabowl.com/cricket/news/", r"/cricket/news/"),
+              ("Nottinghamshire", "https://www.trentbridge.co.uk/news/2026/index.html", r"/news/2026/"),
+              ("Warwickshire", "https://www.edgbaston.com/news", r"/news/"),
+              ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/"),
+              ("Leicestershire", "https://leicestershireccc.co.uk/news/", r"/news/"),
+              ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/"),
+              ("Worcestershire", "https://wccc.co.uk/news/", r"/news/"),
+              ("Middlesex", "https://www.middlesexccc.com/news", r"/news/"),
+              ("Derbyshire", "https://derbyshireccc.com/news/", r"/(?:news|20\d{2})/"),
+              ("Northamptonshire", "https://nccc.co.uk/news/", r"/news/"),
+              ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/"),
+              ("Gloucestershire", "https://www.gloscricket.co.uk/news/", r"/news/")
+          ]
+
+          # The bot is intended for county men's cricket and significant club news.
+          # Commercial, ticketing, hospitality, community and women's-only articles
+          # are filtered unless the article is clearly about the men's first team.
+          EXCLUDE_TERMS = [
+              "women's cricket", "women’s cricket", "women's team", "women’s team",
+              "women v", "women vs", "ladies", "foundation", "community",
+              "hospitality", "membership", "ticket", "tickets", "christmas",
+              "vacancy", "job opportunity", "commercial partner", "sponsorship"
+          ]
+
+          IMPORTANT_TERMS = [
+              "county championship", "first team", "men's", "men’s", "sign",
+              "signs", "contract", "extend", "extension", "leave", "leaves",
+              "retire", "retirement", "injury", "squad", "match report",
+              "match preview", "century", "five-for", "six-for", "wicket",
+              "victory", "win", "defeat", "champions", "promotion", "relegation"
+          ]
+
+          STATE_PATH = "data/county-watch-seen.json"
+          os.makedirs("data", exist_ok=True)
+
+          try:
+              with open(STATE_PATH, "r", encoding="utf-8") as f:
+                  seen = json.load(f)
+          except Exception:
+              seen = {}
+
+          def fetch(url):
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
+                  }
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return response.read()
+
+          def clean(text):
+              return re.sub(r"\s+", " ", text or "").strip()
+
+          def parse_date(value):
+              if not value:
+                  return None
+              value = value.strip()
+              try:
+                  dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                  if dt.tzinfo is None:
+                      dt = dt.replace(tzinfo=timezone.utc)
+                  return dt.astimezone(timezone.utc)
+              except Exception:
+                  pass
+              try:
+                  dt = parsedate_to_datetime(value)
+                  if dt.tzinfo is None:
+                      dt = dt.replace(tzinfo=timezone.utc)
+                  return dt.astimezone(timezone.utc)
+              except Exception:
+                  return None
+
+          def article_metadata(url, html):
+              soup = BeautifulSoup(html, "html.parser")
+
+              title = ""
+              h1 = soup.find("h1")
+              if h1:
+                  title = clean(h1.get_text(" ", strip=True))
+
+              if not title and soup.find("meta", property="og:title"):
+                  title = clean(soup.find("meta", property="og:title").get("content", ""))
+
+              if not title and soup.title:
+                  title = clean(soup.title.get_text(" ", strip=True))
+
+              description = ""
+              meta = soup.find("meta", attrs={"name": "description"})
+              if meta:
+                  description = clean(meta.get("content", ""))
+
+              published = None
+
+              for meta_name in ["article:published_time", "datePublished", "pubdate"]:
+                  tag = soup.find("meta", property=meta_name) or soup.find("meta", attrs={"name": meta_name})
+                  if tag:
+                      published = parse_date(tag.get("content", ""))
+                      if published:
+                          break
+
+              # Many county sites expose datePublished in JSON-LD.
+              for script in soup.find_all("script", type="application/ld+json"):
+                  if published:
+                      break
+                  try:
+                      data = json.loads(script.string or script.get_text())
+                  except Exception:
+                      continue
+
+                  objects = data if isinstance(data, list) else [data]
+                  for obj in objects:
+                      if isinstance(obj, dict) and obj.get("datePublished"):
+                          published = parse_date(str(obj["datePublished"]))
+                          if published:
+                              break
+
+              return title, description, published
+
+          def candidate_links(index_url, pattern):
+              html = fetch(index_url)
+              soup = BeautifulSoup(html, "html.parser")
+              base = urllib.parse.urlparse(index_url)
+              links = []
+
+              for a in soup.find_all("a", href=True):
+                  href = urllib.parse.urljoin(index_url, a["href"])
+                  parsed = urllib.parse.urlparse(href)
+
+                  if parsed.netloc and parsed.netloc != base.netloc:
+                      continue
+                  if not re.search(pattern, parsed.path, re.I):
+                      continue
+                  if parsed.path.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".pdf", ".mp4")):
+                      continue
+                  if href.rstrip("/") == index_url.rstrip("/"):
+                      continue
+
+                  canonical = href.split("#", 1)[0].rstrip("/")
+                  if canonical not in links:
+                      links.append(canonical)
+
+              return links[:8]
+
+          now = datetime.now(timezone.utc)
+          cutoff = now - timedelta(hours=2)
+          found = []
+
+          for county, index_url, pattern in COUNTIES:
+              try:
+                  links = candidate_links(index_url, pattern)
+              except Exception as e:
+                  print(f"{county}: index failed: {e}")
+                  continue
+
+              for link in links:
+                  if link in seen:
+                      continue
+
+                  try:
+                      html = fetch(link)
+                      title, description, published = article_metadata(link, html)
+                  except Exception as e:
+                      print(f"{county}: article failed {link}: {e}")
+                      continue
+
+                  if not title or not published:
+                      continue
+                  if published < cutoff or published > now + timedelta(minutes=10):
+                      continue
+
+                  text = f"{title} {description}".lower()
+                  if any(term in text for term in EXCLUDE_TERMS):
+                      continue
+
+                  score = sum(1 for term in IMPORTANT_TERMS if term in text)
+                  if score == 0:
+                      continue
+
+                  found.append({
+                      "county": county,
+                      "title": title,
+                      "description": description,
+                      "link": link,
+                      "published": published.isoformat(),
+                      "score": score
+                  })
+
+          # Deduplicate and keep the strongest items first.
+          unique = {}
+          for item in found:
+              unique[item["link"]] = item
+
+          found = sorted(
+              unique.values(),
+              key=lambda x: (x["score"], x["published"]),
+              reverse=True
+          )
+
+          # Mark everything discovered in this run as seen, including filtered
+          # articles, so the bot doesn't repeatedly inspect the same links.
+          for item in found:
+              seen[item["link"]] = now.isoformat()
+
+          # Also remember candidate links we inspected, even if filtered.
+          # This prevents repeated fetching of the same articles every hour.
+          for county, index_url, pattern in COUNTIES:
+              try:
+                  for link in candidate_links(index_url, pattern):
+                      seen.setdefault(link, now.isoformat())
+              except Exception:
+                  pass
+
+          # Keep the state file bounded.
+          if len(seen) > 1000:
+              recent = sorted(seen.items(), key=lambda x: x[1], reverse=True)[:800]
+              seen = dict(recent)
+
+          with open(STATE_PATH, "w", encoding="utf-8") as f:
+              json.dump(seen, f, indent=2)
+
+          found = found[:10]
+
+          if not found:
+              print("No new qualifying county stories found.")
+              raise SystemExit(0)
+
+          lines = [
+              f"🗞️ **County Watch - {now.strftime('%d %B %Y')}**",
+              "*New stories from official county websites.*",
+              ""
+          ]
+
+          for item in found:
+              summary = item["description"]
+              if len(summary) > 260:
+                  summary = summary[:257].rsplit(" ", 1)[0] + "..."
+
+              lines.append(
+                  f"🏏 **{item['county']} — {item['title']}**"
+              )
+              if summary:
+                  lines.append(summary)
+              lines.append(
+                  f"*[Official county site ·]* **[Read the full story →]({item['link']})**"
+              )
+              lines.append("")
+
+          message = "\n".join(lines)
+          if len(message) > 1900:
+              message = message[:1897].rsplit("\n", 1)[0] + "..."
+
+          with open("county-watch-message.json", "w", encoding="utf-8") as f:
+              json.dump({"content": message, "flags": 4}, f)
+
+          print(message)
+
+          webhook = os.environ.get("COUNTY_WATCH_WEBHOOK_URL", "").strip()
+          if not webhook:
+              print("COUNTY_WATCH_WEBHOOK_URL is not configured; collection completed without posting.")
+              raise SystemExit(0)
+
+          request = urllib.request.Request(
+              webhook,
+              data=json.dumps({"content": message, "flags": 4}).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              print(f"Discord response: {response.status}")
+          PY
+
+      - name: Save seen-state
+        run: |
+          if git diff --quiet -- data/county-watch-seen.json; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git config user.name "County Championship Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/county-watch-seen.json
+          git commit -m "Update county website watch state"
+          git push
