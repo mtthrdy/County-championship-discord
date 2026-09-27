@@ -42,6 +42,7 @@ jobs:
           import urllib.parse
           import urllib.request
           import urllib.error
+          import xml.etree.ElementTree as ET
           from datetime import datetime, timezone, timedelta
           from email.utils import parsedate_to_datetime
 
@@ -205,6 +206,43 @@ jobs:
 
               return title, description, published
 
+          def glamorgan_rss_stories():
+              # Glamorgan blocks GitHub Actions with HTTP 403. Use Google News RSS
+              # only as a discovery layer, while retaining official Glamorgan URLs.
+              rss_url = (
+                  "https://news.google.com/rss/search?"
+                  "q=site%3Aglamorgancricket.com%2Fnews%2F%20Glamorgan%20Cricket"
+                  "&hl=en-GB&gl=GB&ceid=GB%3Aen"
+              )
+              html = fetch(rss_url)
+              root = ET.fromstring(html)
+              stories = []
+              for item in root.findall(".//item"):
+                  title = clean(item.findtext("title", ""))
+                  link = clean(item.findtext("link", ""))
+                  description = clean(item.findtext("description", ""))
+                  pub_date = parse_date(item.findtext("pubDate", ""))
+                  if not title or not link or not pub_date:
+                      continue
+                  try:
+                      request = urllib.request.Request(
+                          link,
+                          headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
+                      )
+                      with urllib.request.urlopen(request, timeout=20) as response:
+                          official_url = response.geturl()
+                  except Exception:
+                      official_url = link
+                  if "glamorgancricket.com/news/" not in official_url:
+                      continue
+                  stories.append({
+                      "title": title,
+                      "description": re.sub(r"<[^>]+>", " ", description),
+                      "link": official_url.split("#", 1)[0].rstrip("/"),
+                      "published": pub_date
+                  })
+              return stories[:8]
+
           def candidate_links(index_url, pattern):
               html = fetch(index_url)
               soup = BeautifulSoup(html, "html.parser")
@@ -294,6 +332,48 @@ jobs:
                   links = candidate_links(index_url, pattern)
               except Exception as e:
                   print(f"{county}: index failed: {e}")
+                  continue
+
+              if county == "Glamorgan":
+                  try:
+                      rss_stories = glamorgan_rss_stories()
+                  except Exception as e:
+                      print(f"{county}: RSS discovery failed: {e}")
+                      continue
+
+                  print(f"{county}: RSS found {len(rss_stories)} candidate stories.")
+                  for rss_story in rss_stories:
+                      link = rss_story["link"]
+                      if link in seen:
+                          continue
+                      published = rss_story["published"]
+                      if published < cutoff or published > now + timedelta(minutes=10):
+                          print(f"{county}: skipped {link} - published {published.isoformat()} outside lookback")
+                          continue
+
+                      checked_links.add(link)
+                      title = rss_story["title"]
+                      description = clean(rss_story["description"])
+                      text = f"{title} {description}".lower()
+                      if any(term in text for term in EXCLUDE_TERMS):
+                          print(f"{county}: filtered {title}")
+                          continue
+
+                      score = sum(1 for term in IMPORTANT_TERMS if term in text)
+                      if score == 0:
+                          print(f"{county}: skipped {title} - no important terms")
+                          continue
+
+                      print(f"{county}: qualifying story - {title}")
+                      found.append({
+                          "county": county,
+                          "webhook_key": webhook_key,
+                          "title": title,
+                          "description": description,
+                          "link": link,
+                          "published": published.isoformat(),
+                          "score": score
+                      })
                   continue
 
               print(f"{county}: found {len(links)} candidate links.")
