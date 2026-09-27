@@ -21,10 +21,15 @@ jobs:
           from datetime import datetime, timezone, timedelta
           from email.utils import parsedate_to_datetime
 
-          feeds = {
-              "BBC Sport": "https://feeds.bbci.co.uk/sport/cricket/rss.xml",
-              "ESPNcricinfo": "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"
-          }
+          # Dedicated County Championship feeds are the primary source.
+          # The global Cricinfo feed and BBC feed are retained as supplementary
+          # sources so important stories are less likely to be missed.
+          feeds = [
+              ("ESPNcricinfo", "Division One", "https://www.espncricinfo.com/rss/content/story/feeds/1513323.xml"),
+              ("ESPNcricinfo", "Division Two", "https://www.espncricinfo.com/rss/content/story/feeds/1513324.xml"),
+              ("ESPNcricinfo", "General", "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"),
+              ("BBC Sport", "General", "https://feeds.bbci.co.uk/sport/cricket/rss.xml")
+          ]
 
           counties = [
               "Surrey", "Somerset", "Yorkshire", "Lancashire",
@@ -34,7 +39,6 @@ jobs:
               "Northamptonshire", "Kent", "Gloucestershire"
           ]
 
-          # Terms which strongly indicate the County Championship.
           championship_terms = [
               "county championship",
               "county championship division",
@@ -42,7 +46,6 @@ jobs:
               "championship division"
           ]
 
-          # Competitions/topics we definitely don't want.
           exclude_terms = [
               "t20 blast",
               "vitality blast",
@@ -60,174 +63,211 @@ jobs:
 
           now = datetime.now(timezone.utc)
           cutoff = now - timedelta(hours=24)
-
           articles = []
 
-          for source, url in feeds.items():
+          def clean_text(value):
+              value = html.unescape(value or "")
+              value = re.sub(r"<[^>]+>", " ", value)
+              value = re.sub(r"\\s+", " ", value)
+              return value.strip()
+
+          def fetch_feed(source, division, url):
               try:
                   request = urllib.request.Request(
                       url,
                       headers={"User-Agent": "Mozilla/5.0"}
                   )
-
-                  data = urllib.request.urlopen(
-                      request,
-                      timeout=20
-                  ).read()
-
+                  data = urllib.request.urlopen(request, timeout=20).read()
                   root = ET.fromstring(data)
 
                   for item in root.findall(".//item"):
-
-                      title = html.unescape(
-                          item.findtext("title", "").strip()
-                      )
-
+                      title = clean_text(item.findtext("title", ""))
                       link = item.findtext("link", "").strip()
-
-                      description = html.unescape(
-                          item.findtext("description", "").strip()
-                      )
-
-                      pub_date = item.findtext(
-                          "pubDate", ""
-                      ).strip()
+                      description = clean_text(item.findtext("description", ""))
+                      pub_date = item.findtext("pubDate", "").strip()
 
                       if not title or not link or not pub_date:
                           continue
 
                       try:
                           published = parsedate_to_datetime(pub_date)
-
                           if published.tzinfo is None:
-                              published = published.replace(
-                                  tzinfo=timezone.utc
-                              )
-
-                          published = published.astimezone(
-                              timezone.utc
-                          )
-
+                              published = published.replace(tzinfo=timezone.utc)
+                          published = published.astimezone(timezone.utc)
                       except Exception:
                           continue
 
-                      # Only consider the last 24 hours.
                       if published < cutoff:
                           continue
 
-                      text = (
-                          title + " " + description
-                      ).lower()
+                      text = (title + " " + description).lower()
 
-                      # Exclude other competitions/topics.
-                      if any(
-                          term in text
-                          for term in exclude_terms
+                      if any(term in text for term in exclude_terms):
+                          continue
+
+                      if division == "General" and not any(
+                          term in text for term in championship_terms
                       ):
                           continue
 
-                      # Require an explicit Championship reference.
-                      if not any(
-                          term in text
-                          for term in championship_terms
-                      ):
-                          continue
-
-                      county_matches = []
-
-                      for county in counties:
-                          if re.search(
-                              r"\b" + re.escape(county.lower()) + r"\b",
-                              text
-                          ):
-                              county_matches.append(county)
+                      county_matches = [
+                          county for county in counties
+                          if re.search(r"\\b" + re.escape(county.lower()) + r"\\b", text)
+                      ]
 
                       articles.append({
                           "source": source,
+                          "division": division,
                           "title": title,
+                          "description": description,
                           "link": link,
                           "published": published,
                           "counties": county_matches
                       })
 
               except Exception as e:
-                  print(f"Could not read {source}: {e}")
+                  print(f"Could not read {source} {division}: {e}")
 
-          # Newest first.
-          articles.sort(
-              key=lambda x: x["published"],
-              reverse=True
-          )
+          for source, division, url in feeds:
+              fetch_feed(source, division, url)
 
-          # Remove duplicate links.
+          # Remove duplicate stories.
           unique = []
           seen = set()
 
           for article in articles:
-              if article["link"] in seen:
+              key = article["link"].split("?")[0].rstrip("/")
+              if key in seen:
                   continue
-
-              seen.add(article["link"])
+              seen.add(key)
               unique.append(article)
 
-          # Maximum five stories.
+          # Score stories for editorial importance rather than simply using
+          # newest-first ordering.
+          importance_terms = {
+              "champion": 12,
+              "champions": 12,
+              "title": 10,
+              "promoted": 10,
+              "promotion": 10,
+              "relegated": 10,
+              "relegation": 10,
+              "survive": 8,
+              "survival": 8,
+              "win": 6,
+              "wins": 6,
+              "victory": 6,
+              "defeat": 6,
+              "beaten": 6,
+              "century": 5,
+              "hundred": 5,
+              "five-wicket": 5,
+              "five wicket": 5,
+              "hat-trick": 7,
+              "hat trick": 7,
+              "record": 5,
+              "thriller": 4
+          }
+
+          for article in unique:
+              haystack = (article["title"] + " " + article["description"]).lower()
+              score = 0
+
+              for term, points in importance_terms.items():
+                  if term in haystack:
+                      score += points
+
+              # Freshness breaks ties between similarly important stories.
+              age_hours = max(
+                  0,
+                  (now - article["published"]).total_seconds() / 3600
+              )
+              score += max(0, 3 - age_hours / 8)
+
+              # Dedicated series feeds get a small source bonus.
+              if article["division"] in ("Division One", "Division Two"):
+                  score += 2
+
+              article["score"] = score
+
+          unique.sort(
+              key=lambda x: (x["score"], x["published"]),
+              reverse=True
+          )
+
           articles = unique[:5]
 
-          today = now.strftime("%d %B %Y")
+          def summarise(article):
+              description = article["description"]
+
+              if not description:
+                  return ""
+
+              # RSS descriptions can be very long. Keep the useful first
+              # sentence(s), while avoiding a wall of text in Discord.
+              description = re.sub(r"\\s+", " ", description).strip()
+
+              sentences = re.split(r"(?<=[.!?])\\s+", description)
+              summary = " ".join(sentences[:2]).strip()
+
+              if len(summary) > 300:
+                  summary = summary[:297].rsplit(" ", 1)[0] + "..."
+
+              return summary
+
+          date_label = now.strftime("%d %B %Y")
 
           lines = [
-              "🏏 **COUNTY CHAMPIONSHIP MORNING BRIEF**",
-              f"*{today}*",
-              "",
-              "📰 **Latest from the Championship**",
+              "🏏 **COUNTY CHAMPIONSHIP — DAILY BRIEF**",
+              f"*{date_label}*",
               ""
           ]
 
           if articles:
-
-              for article in articles:
-
-                  # The headline itself is the clickable link.
-                  lines.append(
-                      f"• **[{article['title']}]"
-                      f"({article['link']})**"
+              for index, article in enumerate(articles, 1):
+                  division = article["division"]
+                  division_label = (
+                      "Division One" if division == "Division One"
+                      else "Division Two" if division == "Division Two"
+                      else "County Championship"
                   )
 
-                  county_text = ""
+                  lines.append(
+                      f"**{index}. {article['title']}**"
+                  )
+
+                  summary = summarise(article)
+                  if summary:
+                      lines.append(summary)
 
                   if article["counties"]:
-                      county_text = (
-                          " • " +
-                          ", ".join(article["counties"][:3])
+                      lines.append(
+                          f"*{division_label} • {', '.join(article['counties'][:3])}*"
                       )
+                  else:
+                      lines.append(f"*{division_label}*")
 
                   lines.append(
-                      f"_{article['source']}{county_text}_"
+                      f"**[Read the full story →]({article['link']})**"
                   )
-
                   lines.append("")
 
               lines.append(
-                  f"*{len(articles)} stories from the last 24 hours*"
+                  f"*Top {len(articles)} County Championship stories from the last 24 hours*"
               )
-
           else:
-
               lines.append(
-                  "No new County Championship stories "
-                  "were found in the last 24 hours."
+                  "No new County Championship stories were found in the last 24 hours."
               )
 
           message = "\n".join(lines)
 
-          # Stay safely below Discord's 2,000 character limit.
-          message = message[:1900]
+          # Discord has a 2,000 character message limit.
+          if len(message) > 1900:
+              message = message[:1897].rsplit("\n", 1)[0] + "..."
 
           with open("discord-message.json", "w") as f:
-              json.dump(
-                  {"content": message},
-                  f
-              )
+              json.dump({"content": message}, f)
 
           print(message)
           PY
