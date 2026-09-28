@@ -421,7 +421,7 @@ jobs:
           # Manual runs use a wider window so we can test the collector even
           # when Somerset has not published anything in the last couple of hours.
           # Scheduled runs stay tight to avoid reposting older stories.
-          lookback_hours = 168 if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else 2
+          lookback_hours = 168 if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else 26
           cutoff = now - timedelta(hours=lookback_hours)
           print(f"Looking back {lookback_hours} hours.")
           found = []
