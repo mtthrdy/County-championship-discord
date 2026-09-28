@@ -68,6 +68,22 @@ jobs:
 
           now = datetime.now(timezone.utc)
 
+          # Remember stories already sent by previous roundups so that a story
+          # still inside the 24-hour feed window cannot be posted twice.
+          STATE_PATH = "data/county-roundup-seen.json"
+          import os
+          os.makedirs("data", exist_ok=True)
+          try:
+              with open(STATE_PATH, "r", encoding="utf-8") as f:
+                  seen_stories = json.load(f)
+          except Exception:
+              seen_stories = {}
+
+          # Keep the memory bounded.
+          if not isinstance(seen_stories, dict):
+              seen_stories = {}
+
+
           # GitHub Actions cron is UTC. We run at both 07:00 and 08:00 UTC
           # and only continue when it is actually 08:00 in London, keeping
           # the roundup at 8am UK time across BST/GMT changes.
@@ -145,15 +161,19 @@ jobs:
           for source, division, url in feeds:
               fetch_feed(source, division, url)
 
-          # Remove duplicate stories.
+          # Remove duplicate stories within this run, and remove stories
+          # that were already successfully sent by an earlier roundup.
           unique = []
-          seen = set()
+          run_seen = set()
 
           for article in articles:
               key = article["link"].split("?")[0].rstrip("/")
-              if key in seen:
+              if key in run_seen:
                   continue
-              seen.add(key)
+              run_seen.add(key)
+              if key in seen_stories:
+                  print(f"Skipping previously sent story: {article['title']}")
+                  continue
               unique.append(article)
 
           # Editorial scoring: prioritise competition-defining events,
@@ -326,7 +346,23 @@ jobs:
           print(message)
           PY
 
-          curl -X POST \
+          curl -f -X POST \
             -H "Content-Type: application/json" \
             --data @discord-message.json \
             "$DISCORD_WEBHOOK_URL"
+
+          # Only remember stories after Discord has accepted the roundup.
+          for article in articles:
+              key = article["link"].split("?")[0].rstrip("/")
+              seen_stories[key] = now.isoformat()
+
+          if len(seen_stories) > 1000:
+              recent = sorted(
+                  seen_stories.items(),
+                  key=lambda item: item[1],
+                  reverse=True
+              )[:800]
+              seen_stories = dict(recent)
+
+          with open(STATE_PATH, "w", encoding="utf-8") as f:
+              json.dump(seen_stories, f, indent=2)
