@@ -366,3 +366,17 @@ jobs:
 
           with open(STATE_PATH, "w", encoding="utf-8") as f:
               json.dump(seen_stories, f, indent=2)
+      - name: Save seen-state
+        run: |
+          # Persist the roundup memory between GitHub Actions runs.
+          git add data/county-roundup-seen.json
+
+          if git diff --cached --quiet -- data/county-roundup-seen.json; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git config user.name "County Championship Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update county roundup state"
+          git push
