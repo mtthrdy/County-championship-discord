@@ -640,13 +640,17 @@ jobs:
 
       - name: Save seen-state
         run: |
-          if git diff --quiet -- data/county-watch-seen.json; then
+          # The state file may be new on the first successful run, so
+          # git diff alone is not enough: untracked files do not appear in
+          # git diff. Stage it first, then check the staged diff.
+          git add data/county-watch-seen.json
+
+          if git diff --cached --quiet -- data/county-watch-seen.json; then
             echo "No state changes to commit."
             exit 0
           fi
 
           git config user.name "County Championship Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/county-watch-seen.json
           git commit -m "Update county website watch state"
           git push
