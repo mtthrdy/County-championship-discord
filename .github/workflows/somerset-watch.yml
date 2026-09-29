@@ -3,7 +3,8 @@ name: County Website Watch
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 * * * *"
+    # 09:00 UK during GMT; GitHub cron is UTC and does not adjust for BST.
+    - cron: "0 9 * * *"
 
 permissions:
   contents: write
