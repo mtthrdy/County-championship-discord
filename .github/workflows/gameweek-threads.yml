@@ -312,15 +312,14 @@ jobs:
               f"🏏 **ROTHESAY COUNTY CHAMPIONSHIP — GAMEWEEK {gameweek}**",
               f"📅 *{display_date(start)} – {display_date(end)}*",
               "",
-              "## Daily Discussion Thread",
+              "## Gameweek Primer",
               "",
               "Welcome to the Gameweek "
               + str(gameweek)
-              + " discussion thread.",
+              + " primer.",
               "",
-              "Use this thread for score updates, wickets, milestones, selection news, "
-                "weather, tactical chat and all the inevitable County Championship "
-                "overreactions.",
+              "Use this post for score updates, wickets, milestones, selection news, weather, tactical chat "
+                "and all the inevitable County Championship overreactions.",
               "",
           ]
 
@@ -331,13 +330,9 @@ jobs:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
-                      stream_url = YOUTUBE_CHANNELS.get(home)
                       venue = VENUES.get((home, away), "Venue TBC")
                       lines.append(f"**{home} v {away}**")
-                      if stream_url:
-                          lines.append(f"   📍 {venue} · 🕥 {START_TIME} · [Watch Stream]({stream_url})")
-                      else:
-                          lines.append(f"   📍 {venue} · 🕥 {START_TIME}")
+                      lines.append(f"   📍 {venue} · 🕥 {START_TIME}")
               lines.append("")
 
           lines.extend([
@@ -350,13 +345,14 @@ jobs:
               "🔗 [ESPNcricinfo — Division Two](https://www.espncricinfo.com/series/county-championship-division-two-2026-1513324)",
               "🔗 [BBC Sport Cricket](https://www.bbc.co.uk/sport/cricket)",
               "",
-              "💬 **Discuss the action in #cricket-chat or your county channel.**"
+              "💬 **Discuss the action in #county-championship, #matchday or your county channel.**"
           ])
 
           message = "\n".join(lines)
 
+          # Keep the useful-links section intact. Discord caps normal messages at 2,000 characters.
           if len(message) > 1900:
-              message = message[:1897].rsplit("\n", 1)[0] + "..."
+              raise SystemExit(f"Gameweek post is too long ({len(message)} characters). Shorten the body before posting.")
 
           payload = json.dumps({
               "content": message,
