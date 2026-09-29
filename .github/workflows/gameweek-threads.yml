@@ -259,32 +259,41 @@ jobs:
           def display_date(iso_date):
               return datetime.fromisoformat(iso_date).strftime("%-d %B")
 
+          # Keep the post close to the Reddit daily discussion format:
+          # clear title, short intro, fixtures by division, then useful links.
           lines = [
-              f"🏏 **Rothesay County Championship — Gameweek {gameweek}**",
-              f"*{display_date(start)} – {display_date(end)}*",
+              f"🏏 **ROTHESAY COUNTY CHAMPIONSHIP — GAMEWEEK {gameweek}**",
+              f"📅 *{display_date(start)} – {display_date(end)}*",
               "",
-              "The discussion thread for Gameweek "
+              "## Daily Discussion Thread",
+              "",
+              "Welcome to the Gameweek "
               + str(gameweek)
-              + " is open. Share score updates, milestones, wickets, weather reports, "
-                "selection news and all the inevitable overreactions.",
-              ""
+              + " discussion thread.",
+              "",
+              "Use this thread for score updates, wickets, milestones, selection news, "
+                "weather, tactical chat and all the inevitable County Championship "
+                "overreactions.",
+              "",
           ]
 
           for division_name, fixtures in divisions:
               lines.append(f"**{division_name.upper()}**")
+              lines.append("")
               if not fixtures:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
-                      lines.append(f"🏏 {home} v {away}")
+                      lines.append(f"🏏 **{home} v {away}**")
               lines.append("")
 
           lines.extend([
+              "---",
               "**USEFUL LINKS**",
               "🔗 [ECB County Championship](https://www.ecb.co.uk/county-championship)",
               "🔗 [ESPNcricinfo County Championship](https://www.espncricinfo.com/series/county-championship-2026-1513322)",
               "",
-              "💬 **Have your say below.**"
+              "💬 **What are you watching this round?**"
           ])
 
           message = "\n".join(lines)
