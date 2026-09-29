@@ -330,9 +330,7 @@ jobs:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
-                      venue = VENUES.get((home, away), "Venue TBC")
                       lines.append(f"**{home} v {away}**")
-                      lines.append(f"   📍 {venue} · 🕥 {START_TIME}")
               lines.append("")
 
           lines.extend([
