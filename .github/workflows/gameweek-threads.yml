@@ -332,10 +332,14 @@ jobs:
           lines.extend([
               "---",
               "**USEFUL LINKS**",
-              "🔗 [ECB County Championship](https://www.ecb.co.uk/county-championship)",
-              "🔗 [ESPNcricinfo County Championship](https://www.espncricinfo.com/series/county-championship-2026-1513322)",
+              "🔗 [ECB Match Centre](https://www.ecb.co.uk/championship-live)",
+              "🔗 [ECB Fixtures](https://www.ecb.co.uk/county-championship/fixtures)",
+              "🔗 [ECB Tables](https://www.ecb.co.uk/county-championship/tables)",
+              "🔗 [ESPNcricinfo — Division One](https://www.espncricinfo.com/series/county-championship-division-one-2026-1513323)",
+              "🔗 [ESPNcricinfo — Division Two](https://www.espncricinfo.com/series/county-championship-division-two-2026-1513324)",
+              "🔗 [BBC Sport Cricket](https://www.bbc.co.uk/sport/cricket)",
               "",
-              "💬 **What are you watching this round?**"
+              "💬 **Discuss the action in #cricket-chat or your county channel.**"
           ])
 
           message = "\n".join(lines)
