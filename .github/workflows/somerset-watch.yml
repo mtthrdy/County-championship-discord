@@ -74,12 +74,12 @@ jobs:
               ("Sussex", "https://sussexcricket.co.uk/", r"/news/[^/]+/?$", "SUSSEX_WEBHOOK_URL"),
               ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/[^/]+/?$", "YORKSHIRE_WEBHOOK_URL"),
               ("Worcestershire", "https://wccc.co.uk/news/", r"/news/[^/]+/?$", "WORCESTERSHIRE_WEBHOOK_URL"),
-              ("Warwickshire", "https://www.edgbaston.com/", r"/news/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
+              ("Warwickshire", "https://www.edgbaston.com/news", r"/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
               ("Hampshire", "https://www.ageasbowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
               ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/[^/]+/?$", "KENT_WEBHOOK_URL"),
-              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
+              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/\\d{4}-news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
               ("Nottinghamshire", "https://www.trentbridge.co.uk/news/", r"/news/\d{4}/[^/]+/[^/]+\.html$", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
-              ("Surrey", "https://www.kiaoval.com/news/", r"/news/[^/]+/?$", "SURREY_WEBHOOK_URL"),
+              ("Surrey", "https://www.kiaoval.com/latest-news/", r"/[^/]+/?$", "SURREY_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
           ]
 
@@ -230,6 +230,26 @@ jobs:
                           if published:
                               break
 
+              # Final fallback for county sites that render the publication date
+              # as visible text rather than metadata.
+              if not published:
+                  page_text = clean(soup.get_text(" ", strip=True))
+                  date_match = re.search(
+                      r"\\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\\s+(\\d{1,2})\\s+"
+                      r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+                      r"\\s+(\\d{4})\\b",
+                      page_text,
+                      re.I
+                  )
+                  if date_match:
+                      try:
+                          published = datetime.strptime(
+                              f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}",
+                              "%d %B %Y"
+                          ).replace(tzinfo=timezone.utc)
+                      except Exception:
+                          pass
+
               return title, description, published
 
           def espncricinfo_fallback(county):
@@ -320,8 +340,8 @@ jobs:
               print(f"{county}: ESPNcricinfo fallback found {len(result)} candidate stories.")
               return result
 
-          def candidate_links(index_url, pattern):
-              html = fetch(index_url)
+          def candidate_links(index_url, pattern, county_context=None):
+              html = fetch(index_url).decode("utf-8", errors="replace")
               soup = BeautifulSoup(html, "html.parser")
               base = urllib.parse.urlparse(index_url)
               links = []
@@ -340,6 +360,22 @@ jobs:
                       continue
 
                   canonical = href.split("#", 1)[0].rstrip("/")
+
+                  # Ageas Bowl's cricket/news index contains several venue/service
+                  # pages alongside actual cricket stories. Avoid fetching those.
+                  if county_context == "Hampshire":
+                      blocked = (
+                          "/cricket/news/golf",
+                          "/cricket/news/hotel",
+                          "/cricket/news/eforea",
+                          "/cricket/news/beefys",
+                          "/cricket/news/wellbeing",
+                          "/cricket/news/conference",
+                          "/cricket/news/events"
+                      )
+                      if any(parsed.path.lower().startswith(path) for path in blocked):
+                          continue
+
                   if canonical not in links:
                       links.append(canonical)
 
@@ -422,7 +458,7 @@ jobs:
                   continue
 
               try:
-                  links = candidate_links(index_url, pattern)
+                  links = candidate_links(index_url, pattern, county)
               except urllib.error.HTTPError as e:
                   if e.code == 403 and county in ("Glamorgan", "Gloucestershire"):
                       print(f"{county}: official site returned HTTP 403; using ESPNcricinfo fallback.")
