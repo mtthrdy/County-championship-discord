@@ -217,7 +217,7 @@ jobs:
               ])
           }
 
-          STATE_PATH = "data/gameweek-threads-seen.json"
+          # Official county YouTube channels used for home-team live streams.\n          YOUTUBE_CHANNELS = {\n              "Derbyshire": "https://www.youtube.com/@DerbyshireCCC",\n              "Durham": "https://www.youtube.com/@DurhamCricket",\n              "Essex": "https://www.youtube.com/@EssexCricketTV",\n              "Glamorgan": "https://www.youtube.com/@GlamorganCricket",\n              "Gloucestershire": "https://www.youtube.com/@GloucestershireCricket",\n              "Hampshire": "https://www.youtube.com/@hantscricket",\n              "Kent": "https://www.youtube.com/@kentcricket",\n              "Lancashire": "https://www.youtube.com/channel/UCFNf9wV2ShfzFlFAK4elXyA",\n              "Leicestershire": "https://www.youtube.com/@leicestershireccc",\n              "Middlesex": "https://www.youtube.com/@MiddlesexCCC",\n              "Northamptonshire": "https://www.youtube.com/@NorthantsCricket",\n              "Nottinghamshire": "https://www.youtube.com/@NottsOutlaws",\n              "Somerset": "https://www.youtube.com/@SomersetCricket",\n              "Surrey": "https://www.youtube.com/@surreycricket",\n              "Sussex": "https://www.youtube.com/@sussexccc",\n              "Warwickshire": "https://www.youtube.com/@WarwickshireCCC",\n              "Worcestershire": "https://www.youtube.com/@WorcsCCC",\n              "Yorkshire": "https://www.youtube.com/@YorkshireCCC",\n          }\n\n          STATE_PATH = "data/gameweek-threads-seen.json"
           os.makedirs("data", exist_ok=True)
           try:
               with open(STATE_PATH, "r", encoding="utf-8") as f:
@@ -284,7 +284,7 @@ jobs:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
-                      lines.append(f"🏏 **{home} v {away}**")
+                      stream_url = YOUTUBE_CHANNELS.get(home)\n                      if stream_url:\n                          lines.append(f"🏏 **{home} v {away}** — [Watch Stream]({stream_url})")\n                      else:\n                          lines.append(f"🏏 **{home} v {away}**")
               lines.append("")
 
           lines.extend([
