@@ -312,14 +312,7 @@ jobs:
               f"🏏 **ROTHESAY COUNTY CHAMPIONSHIP — GAMEWEEK {gameweek}**",
               f"📅 *{display_date(start)} – {display_date(end)}*",
               "",
-              "## Gameweek Primer",
-              "",
-              "Welcome to the Gameweek "
-              + str(gameweek)
-              + " primer.",
-              "",
-              "Use this post for score updates, wickets, milestones, selection news, weather, tactical chat "
-                "and all the inevitable County Championship overreactions.",
+              "Here's everything you need to know ahead of this week's games.",
               "",
           ]
 
