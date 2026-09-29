@@ -1,0 +1,334 @@
+name: County Championship Gameweek Threads
+
+on:
+  workflow_dispatch:
+    inputs:
+      gameweek:
+        description: "Gameweek number to post (leave blank to use today's scheduled gameweek)"
+        required: false
+        type: string
+  schedule:
+    # Check each morning; the script only posts on the first day of a round.
+    # 07:15 avoids the heavy load that can affect jobs at the top of the hour.
+    - cron: "15 7 * * *"
+      timezone: "Europe/London"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: county-gameweek-threads
+  cancel-in-progress: false
+
+jobs:
+  post-thread:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Create gameweek thread
+        env:
+          GAMEWEEK_THREADS_WEBHOOK_URL: ${{ secrets.GAMEWEEK_THREADS_WEBHOOK_URL }}
+          GAMEWEEK_INPUT: ${{ inputs.gameweek }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+
+          WEBHOOK = os.environ.get("GAMEWEEK_THREADS_WEBHOOK_URL", "").strip()
+          if not WEBHOOK:
+              raise SystemExit("GAMEWEEK_THREADS_WEBHOOK_URL is not configured.")
+
+          # 2026 Rothesay County Championship schedule, sourced from the ECB.
+          # The division split is the 2026 structure; update this list when
+          # the ECB publishes the following season's divisions and fixtures.
+          ROUNDS = {
+              1:  ("2026-04-03", "2026-04-06", [
+                  ("Division One", [
+                      ("Glamorgan", "Yorkshire"), ("Hampshire", "Essex"),
+                      ("Leicestershire", "Sussex"), ("Somerset", "Nottinghamshire"),
+                      ("Warwickshire", "Surrey")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Worcestershire"), ("Durham", "Kent"),
+                      ("Middlesex", "Gloucestershire"), ("Northamptonshire", "Lancashire")
+                  ])
+              ]),
+              2:  ("2026-04-10", "2026-04-13", [
+                  ("Division One", [
+                      ("Essex", "Somerset"), ("Nottinghamshire", "Glamorgan"),
+                      ("Surrey", "Leicestershire"), ("Sussex", "Warwickshire"),
+                      ("Yorkshire", "Hampshire")
+                  ]),
+                  ("Division Two", [
+                      ("Gloucestershire", "Durham"), ("Kent", "Northamptonshire"),
+                      ("Lancashire", "Derbyshire"), ("Middlesex", "Worcestershire")
+                  ])
+              ]),
+              3:  ("2026-04-17", "2026-04-20", [
+                  ("Division One", [
+                      ("Hampshire", "Somerset"), ("Warwickshire", "Essex")
+                  ]),
+                  ("Division Two", [
+                      ("Gloucestershire", "Lancashire"), ("Northamptonshire", "Middlesex")
+                  ])
+              ]),
+              4:  ("2026-04-24", "2026-04-27", [
+                  ("Division One", [
+                      ("Glamorgan", "Leicestershire"), ("Nottinghamshire", "Warwickshire"),
+                      ("Surrey", "Essex"), ("Yorkshire", "Sussex")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Gloucestershire"), ("Durham", "Lancashire"),
+                      ("Worcestershire", "Kent")
+                  ])
+              ]),
+              5:  ("2026-05-01", "2026-05-04", [
+                  ("Division One", [
+                      ("Hampshire", "Glamorgan"), ("Leicestershire", "Nottinghamshire"),
+                      ("Somerset", "Yorkshire"), ("Surrey", "Sussex")
+                  ]),
+                  ("Division Two", [
+                      ("Kent", "Derbyshire"), ("Middlesex", "Durham"),
+                      ("Northamptonshire", "Worcestershire")
+                  ])
+              ]),
+              6:  ("2026-05-08", "2026-05-11", [
+                  ("Division One", [
+                      ("Essex", "Hampshire"), ("Glamorgan", "Somerset"),
+                      ("Nottinghamshire", "Surrey"), ("Sussex", "Leicestershire"),
+                      ("Warwickshire", "Yorkshire")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Northamptonshire"), ("Gloucestershire", "Kent"),
+                      ("Lancashire", "Middlesex"), ("Worcestershire", "Durham")
+                  ])
+              ]),
+              7:  ("2026-05-15", "2026-05-18", [
+                  ("Division One", [
+                      ("Essex", "Leicestershire"), ("Hampshire", "Nottinghamshire"),
+                      ("Somerset", "Sussex"), ("Warwickshire", "Glamorgan"),
+                      ("Yorkshire", "Surrey")
+                  ]),
+                  ("Division Two", [
+                      ("Gloucestershire", "Northamptonshire"), ("Kent", "Durham"),
+                      ("Lancashire", "Worcestershire"), ("Middlesex", "Derbyshire")
+                  ])
+              ]),
+              8:  ("2026-06-07", "2026-06-10", [
+                  ("Division One", [("Surrey", "Hampshire")]),
+                  ("Division Two", [])
+              ]),
+              9:  ("2026-06-12", "2026-06-15", [
+                  ("Division One", [
+                      ("Leicestershire", "Essex"), ("Nottinghamshire", "Somerset"),
+                      ("Sussex", "Glamorgan"), ("Yorkshire", "Warwickshire")
+                  ]),
+                  ("Division Two", [
+                      ("Durham", "Derbyshire"), ("Lancashire", "Kent"),
+                      ("Northamptonshire", "Gloucestershire"), ("Worcestershire", "Middlesex")
+                  ])
+              ]),
+              10: ("2026-06-19", "2026-06-22", [
+                  ("Division One", [
+                      ("Essex", "Nottinghamshire"), ("Glamorgan", "Surrey"),
+                      ("Leicestershire", "Yorkshire"), ("Somerset", "Warwickshire"),
+                      ("Sussex", "Hampshire")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Lancashire"), ("Durham", "Northamptonshire"),
+                      ("Kent", "Middlesex"), ("Worcestershire", "Gloucestershire")
+                  ])
+              ]),
+              11: ("2026-08-20", "2026-08-23", [
+                  ("Division One", [
+                      ("Hampshire", "Yorkshire"), ("Leicestershire", "Glamorgan"),
+                      ("Somerset", "Essex"), ("Surrey", "Nottinghamshire"),
+                      ("Warwickshire", "Sussex")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Durham"), ("Gloucestershire", "Worcestershire"),
+                      ("Lancashire", "Northamptonshire"), ("Middlesex", "Kent")
+                  ])
+              ]),
+              12: ("2026-08-27", "2026-08-30", [
+                  ("Division One", [
+                      ("Essex", "Surrey"), ("Glamorgan", "Hampshire"),
+                      ("Sussex", "Somerset"), ("Warwickshire", "Nottinghamshire"),
+                      ("Yorkshire", "Leicestershire")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Middlesex"), ("Durham", "Gloucestershire"),
+                      ("Northamptonshire", "Kent"), ("Worcestershire", "Lancashire")
+                  ])
+              ]),
+              13: ("2026-09-02", "2026-09-05", [
+                  ("Division One", [
+                      ("Essex", "Sussex"), ("Hampshire", "Warwickshire"),
+                      ("Nottinghamshire", "Leicestershire"), ("Somerset", "Glamorgan"),
+                      ("Surrey", "Yorkshire")
+                  ]),
+                  ("Division Two", [
+                      ("Gloucestershire", "Derbyshire"), ("Kent", "Worcestershire"),
+                      ("Middlesex", "Lancashire"), ("Northamptonshire", "Durham")
+                  ])
+              ]),
+              14: ("2026-09-08", "2026-09-11", [
+                  ("Division One", [
+                      ("Glamorgan", "Warwickshire"), ("Leicestershire", "Somerset"),
+                      ("Nottinghamshire", "Hampshire"), ("Sussex", "Surrey"),
+                      ("Yorkshire", "Essex")
+                  ]),
+                  ("Division Two", [
+                      ("Derbyshire", "Kent"), ("Durham", "Middlesex"),
+                      ("Lancashire", "Gloucestershire"), ("Worcestershire", "Northamptonshire")
+                  ])
+              ]),
+              15: ("2026-09-15", "2026-09-18", [
+                  ("Division One", [
+                      ("Essex", "Warwickshire"), ("Leicestershire", "Hampshire"),
+                      ("Surrey", "Glamorgan"), ("Sussex", "Nottinghamshire"),
+                      ("Yorkshire", "Somerset")
+                  ]),
+                  ("Division Two", [
+                      ("Durham", "Worcestershire"), ("Gloucestershire", "Middlesex"),
+                      ("Kent", "Lancashire"), ("Northamptonshire", "Derbyshire")
+                  ])
+              ]),
+              16: ("2026-09-24", "2026-09-27", [
+                  ("Division One", [
+                      ("Glamorgan", "Essex"), ("Hampshire", "Sussex"),
+                      ("Nottinghamshire", "Yorkshire"), ("Somerset", "Surrey"),
+                      ("Warwickshire", "Leicestershire")
+                  ]),
+                  ("Division Two", [
+                      ("Kent", "Gloucestershire"), ("Lancashire", "Durham"),
+                      ("Middlesex", "Northamptonshire"), ("Worcestershire", "Derbyshire")
+                  ])
+              ])
+          }
+
+          STATE_PATH = "data/gameweek-threads-seen.json"
+          os.makedirs("data", exist_ok=True)
+          try:
+              with open(STATE_PATH, "r", encoding="utf-8") as f:
+                  seen = json.load(f)
+          except Exception:
+              seen = {}
+          if not isinstance(seen, dict):
+              seen = {}
+
+          london_now = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+          input_gameweek = os.environ.get("GAMEWEEK_INPUT", "").strip()
+
+          if input_gameweek:
+              try:
+                  gameweek = int(input_gameweek)
+              except ValueError:
+                  raise SystemExit("Gameweek must be a number from 1 to 16.")
+          else:
+              gameweek = None
+              today = london_now.date().isoformat()
+              for number, (start, end, _) in ROUNDS.items():
+                  if start == today:
+                      gameweek = number
+                      break
+
+              if gameweek is None:
+                  print(f"No gameweek starts today ({today}). Nothing to post.")
+                  raise SystemExit(0)
+
+          if gameweek not in ROUNDS:
+              raise SystemExit(f"Gameweek {gameweek} is not in the configured 2026 schedule.")
+
+          start, end, divisions = ROUNDS[gameweek]
+
+          if str(gameweek) in seen:
+              print(f"Gameweek {gameweek} has already been posted. Nothing to do.")
+              raise SystemExit(0)
+
+          def display_date(iso_date):
+              return datetime.fromisoformat(iso_date).strftime("%-d %B")
+
+          lines = [
+              f"🏏 **Rothesay County Championship — Gameweek {gameweek}**",
+              f"*{display_date(start)} – {display_date(end)}*",
+              "",
+              "The discussion thread for Gameweek "
+              + str(gameweek)
+              + " is open. Share score updates, milestones, wickets, weather reports, "
+                "selection news and all the inevitable overreactions.",
+              ""
+          ]
+
+          for division_name, fixtures in divisions:
+              lines.append(f"**{division_name.upper()}**")
+              if not fixtures:
+                  lines.append("_No fixtures scheduled._")
+              else:
+                  for home, away in fixtures:
+                      lines.append(f"🏏 {home} v {away}")
+              lines.append("")
+
+          lines.extend([
+              "**USEFUL LINKS**",
+              "🔗 [ECB County Championship](https://www.ecb.co.uk/county-championship)",
+              "🔗 [ESPNcricinfo County Championship](https://www.espncricinfo.com/series/county-championship-2026-1513322)",
+              "",
+              "💬 **Have your say below.**"
+          ])
+
+          message = "\n".join(lines)
+
+          if len(message) > 1900:
+              message = message[:1897].rsplit("\n", 1)[0] + "..."
+
+          payload = json.dumps({
+              "content": message,
+              "flags": 4
+          }).encode("utf-8")
+
+          request = urllib.request.Request(
+              WEBHOOK,
+              data=payload,
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  print(f"Discord response: {response.status}")
+          except Exception as e:
+              print(f"Discord delivery failed: {e}")
+              raise
+
+          seen[str(gameweek)] = datetime.now(timezone.utc).isoformat()
+          with open(STATE_PATH, "w", encoding="utf-8") as f:
+              json.dump(seen, f, indent=2)
+          PY
+
+      - name: Save posted-state
+        run: |
+          git add data/gameweek-threads-seen.json
+
+          if git diff --cached --quiet -- data/gameweek-threads-seen.json; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git config user.name "County Championship Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Track County Championship gameweek thread"
+          git push
