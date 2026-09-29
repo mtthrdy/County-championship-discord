@@ -323,18 +323,17 @@ jobs:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
+                      stream_url = YOUTUBE_CHANNELS.get(home)
+                      venue = VENUES.get((home, away), "Venue TBC")
                       lines.append(f"**{home} v {away}**")
+                      if stream_url:
+                          lines.append(f"   📍 {venue} · 🕥 {START_TIME} · [Watch Stream]({stream_url})")
+                      else:
+                          lines.append(f"   📍 {venue} · 🕥 {START_TIME}")
               lines.append("")
 
+          # Keep the guide focused on the fixtures, start times and live streams.
           lines.extend([
-              "---",
-              "**USEFUL LINKS**",
-              "🔗 [ECB Match Centre](https://www.ecb.co.uk/championship-live)",
-              "🔗 [ECB Fixtures](https://www.ecb.co.uk/county-championship/fixtures)",
-              "🔗 [ECB Tables](https://www.ecb.co.uk/county-championship/tables)",
-              "🔗 [ESPNcricinfo — Division One](https://www.espncricinfo.com/series/county-championship-division-one-2026-1513323)",
-              "🔗 [ESPNcricinfo — Division Two](https://www.espncricinfo.com/series/county-championship-division-two-2026-1513324)",
-              "🔗 [BBC Sport Cricket](https://www.bbc.co.uk/sport/cricket)",
               "",
               "💬 **Discuss the action in #county-championship, #matchday or your county channel.**"
           ])
