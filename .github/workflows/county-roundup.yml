@@ -344,12 +344,6 @@ jobs:
               }, f)
 
           print(message)
-          PY
-
-          curl -f -X POST \
-            -H "Content-Type: application/json" \
-            --data @discord-message.json \
-            "$DISCORD_WEBHOOK_URL"
 
           # Only remember stories after Discord has accepted the roundup.
           for article in articles:
@@ -366,6 +360,13 @@ jobs:
 
           with open(STATE_PATH, "w", encoding="utf-8") as f:
               json.dump(seen_stories, f, indent=2)
+          PY
+
+          curl -f -X POST \
+            -H "Content-Type: application/json" \
+            --data @discord-message.json \
+            "$DISCORD_WEBHOOK_URL"
+
       - name: Save seen-state
         run: |
           # Persist the roundup memory between GitHub Actions runs.
