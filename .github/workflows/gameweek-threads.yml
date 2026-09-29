@@ -217,7 +217,7 @@ jobs:
               ])
           }
 
-          # Official county YouTube channels used for home-team live streams.
+          # Venue information for each 2026 fixture.\n          VENUES = {\n              ("Glamorgan", "Essex"): "Sophia Gardens, Cardiff",\n              ("Hampshire", "Sussex"): "Utilita Bowl, Southampton",\n              ("Kent", "Gloucestershire"): "St Lawrence Ground, Canterbury",\n              ("Lancashire", "Durham"): "Emirates Old Trafford, Manchester",\n              ("Middlesex", "Northamptonshire"): "Lord's, London",\n              ("Nottinghamshire", "Yorkshire"): "Trent Bridge, Nottingham",\n              ("Somerset", "Surrey"): "Cooper Associates County Ground, Taunton",\n              ("Warwickshire", "Leicestershire"): "Edgbaston, Birmingham",\n              ("Worcestershire", "Derbyshire"): "Visit Worcestershire New Road, Worcester",\n          }\n          START_TIME = "10:30"\n\n          # Official county YouTube channels used for home-team live streams.
           YOUTUBE_CHANNELS = {
               "Derbyshire": "https://www.youtube.com/@DerbyshireCCC",
               "Durham": "https://www.youtube.com/@DurhamCricket",
@@ -307,10 +307,12 @@ jobs:
               else:
                   for home, away in fixtures:
                       stream_url = YOUTUBE_CHANNELS.get(home)
+                      venue = VENUES.get((home, away), "Venue TBC")
+                      lines.append(f"🏏 **{home} v {away}**")
                       if stream_url:
-                          lines.append(f"🏏 **{home} v {away}** — [Watch Stream]({stream_url})")
+                          lines.append(f"   📍 {venue} · 🕥 {START_TIME} · [Watch Stream]({stream_url})")
                       else:
-                          lines.append(f"🏏 **{home} v {away}**")
+                          lines.append(f"   📍 {venue} · 🕥 {START_TIME}")
               lines.append("")
 
           lines.extend([
