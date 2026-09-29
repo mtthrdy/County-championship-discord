@@ -314,7 +314,7 @@ jobs:
           ]
 
           for division_name, fixtures in divisions:
-              lines.append(f"**{division_name.upper()}**")
+              lines.append(f"**{division_name.upper()} 🏏**")
               lines.append("")
               if not fixtures:
                   lines.append("_No fixtures scheduled._")
@@ -322,7 +322,7 @@ jobs:
                   for home, away in fixtures:
                       stream_url = YOUTUBE_CHANNELS.get(home)
                       venue = VENUES.get((home, away), "Venue TBC")
-                      lines.append(f"🏏 **{home} v {away}**")
+                      lines.append(f"**{home} v {away}**")
                       if stream_url:
                           lines.append(f"   📍 {venue} · 🕥 {START_TIME} · [Watch Stream]({stream_url})")
                       else:
