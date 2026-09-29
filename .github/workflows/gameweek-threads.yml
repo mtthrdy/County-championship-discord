@@ -217,7 +217,21 @@ jobs:
               ])
           }
 
-          # Venue information for each 2026 fixture.\n          VENUES = {\n              ("Glamorgan", "Essex"): "Sophia Gardens, Cardiff",\n              ("Hampshire", "Sussex"): "Utilita Bowl, Southampton",\n              ("Kent", "Gloucestershire"): "St Lawrence Ground, Canterbury",\n              ("Lancashire", "Durham"): "Emirates Old Trafford, Manchester",\n              ("Middlesex", "Northamptonshire"): "Lord's, London",\n              ("Nottinghamshire", "Yorkshire"): "Trent Bridge, Nottingham",\n              ("Somerset", "Surrey"): "Cooper Associates County Ground, Taunton",\n              ("Warwickshire", "Leicestershire"): "Edgbaston, Birmingham",\n              ("Worcestershire", "Derbyshire"): "Visit Worcestershire New Road, Worcester",\n          }\n          START_TIME = "10:30"\n\n          # Official county YouTube channels used for home-team live streams.
+          # Venue information for each 2026 fixture.
+          VENUES = {
+              ("Glamorgan", "Essex"): "Sophia Gardens, Cardiff",
+              ("Hampshire", "Sussex"): "Utilita Bowl, Southampton",
+              ("Kent", "Gloucestershire"): "St Lawrence Ground, Canterbury",
+              ("Lancashire", "Durham"): "Emirates Old Trafford, Manchester",
+              ("Middlesex", "Northamptonshire"): "Lord's, London",
+              ("Nottinghamshire", "Yorkshire"): "Trent Bridge, Nottingham",
+              ("Somerset", "Surrey"): "Cooper Associates County Ground, Taunton",
+              ("Warwickshire", "Leicestershire"): "Edgbaston, Birmingham",
+              ("Worcestershire", "Derbyshire"): "Visit Worcestershire New Road, Worcester",
+          }
+          START_TIME = "10:30"
+
+          # Official county YouTube channels used for home-team live streams.
           YOUTUBE_CHANNELS = {
               "Derbyshire": "https://www.youtube.com/@DerbyshireCCC",
               "Durham": "https://www.youtube.com/@DurhamCricket",
