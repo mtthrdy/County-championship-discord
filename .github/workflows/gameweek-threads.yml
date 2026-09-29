@@ -7,6 +7,11 @@ on:
         description: "Gameweek number to post (leave blank to use today's scheduled gameweek)"
         required: false
         type: string
+      force:
+        description: "Force a repost for testing (does not change posted-state)"
+        required: false
+        default: false
+        type: boolean
   schedule:
     # Check each morning; the script only posts on the first day of a round.
     # 07:15 avoids the heavy load that can affect jobs at the top of the hour.
@@ -34,6 +39,7 @@ jobs:
         env:
           GAMEWEEK_THREADS_WEBHOOK_URL: ${{ secrets.GAMEWEEK_THREADS_WEBHOOK_URL }}
           GAMEWEEK_INPUT: ${{ inputs.gameweek }}
+          FORCE_REPOST: ${{ inputs.force }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
@@ -288,9 +294,14 @@ jobs:
 
           start, end, divisions = ROUNDS[gameweek]
 
-          if str(gameweek) in seen:
+          force_repost = os.environ.get("FORCE_REPOST", "").strip().lower() == "true"
+
+          if str(gameweek) in seen and not force_repost:
               print(f"Gameweek {gameweek} has already been posted. Nothing to do.")
               raise SystemExit(0)
+
+          if force_repost:
+              print(f"Force repost enabled for Gameweek {gameweek}.")
 
           def display_date(iso_date):
               return datetime.fromisoformat(iso_date).strftime("%-d %B")
@@ -369,9 +380,10 @@ jobs:
               print(f"Discord delivery failed: {e}")
               raise
 
-          seen[str(gameweek)] = datetime.now(timezone.utc).isoformat()
-          with open(STATE_PATH, "w", encoding="utf-8") as f:
-              json.dump(seen, f, indent=2)
+          if not force_repost:
+              seen[str(gameweek)] = datetime.now(timezone.utc).isoformat()
+              with open(STATE_PATH, "w", encoding="utf-8") as f:
+                  json.dump(seen, f, indent=2)
           PY
 
       - name: Save posted-state
