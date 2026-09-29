@@ -232,104 +232,93 @@ jobs:
 
               return title, description, published
 
-          def glamorgan_rss_stories():
-              # Glamorgan blocks GitHub Actions with HTTP 403. Discover official
-              # articles through public search indexes instead of fetching the
-              # Glamorgan site directly.
-              queries = [
-                  "site:glamorgancricket.com/news/ Glamorgan cricket",
-                  "site:glamorgancricket.com/news/ Glamorgan Essex",
-                  "site:glamorgancricket.com/news/ County Championship Glamorgan"
-              ]
+          def espncricinfo_fallback(county):
+              # Used only when the official county site returns HTTP 403.
+              # Google News RSS is used as a discovery layer, restricted to
+              # ESPNcricinfo results for this specific county.
+              query = f'site:espncricinfo.com "{county}" cricket'
+              rss_url = (
+                  "https://news.google.com/rss/search?q="
+                  + urllib.parse.quote(query)
+                  + "&hl=en-GB&gl=GB&ceid=GB:en"
+              )
 
-              stories = {}
+              stories = []
+              try:
+                  xml = fetch(rss_url).decode("utf-8", errors="replace")
+                  root = ET.fromstring(xml)
+              except Exception as e:
+                  print(f"{county}: ESPNcricinfo fallback failed: {e}")
+                  return stories
 
-              def add_result(url, title, description="", published=None):
-                  if "glamorgancricket.com/news/" not in url:
-                      return
-                  url = url.split("#", 1)[0].rstrip("/")
-                  if not title:
-                      return
-                  stories[url] = {
-                      "title": clean(title),
-                      "description": clean(description),
-                      "link": url,
-                      "published": published or now
-                  }
+              for item in root.findall(".//item"):
+                  title = clean(item.findtext("title", ""))
+                  link = clean(item.findtext("link", ""))
+                  pub_date = parse_date(item.findtext("pubDate", ""))
+                  description = clean(BeautifulSoup(
+                      item.findtext("description", ""), "html.parser"
+                  ).get_text(" ", strip=True))
 
-              # Google Search result pages expose indexed official URLs even when
-              # the source site blocks GitHub's IP range.
-              for query in queries:
-                  search_url = "https://www.google.com/search?q=" + urllib.parse.quote(query) + "&num=20&hl=en-GB"
-                  try:
-                      html = fetch(search_url).decode("utf-8", errors="replace")
-                      soup = BeautifulSoup(html, "html.parser")
+                  source = item.find("source")
+                  source_name = clean(source.text if source is not None else "")
+                  if source_name.lower() != "espncricinfo":
+                      continue
 
-                      for a in soup.find_all("a", href=True):
-                          href = a.get("href", "")
-                          if "glamorgancricket.com/news/" not in href:
-                              continue
-
-                          match = re.search(
-                              r"https?://(?:www\\.)?glamorgancricket\\.com/news/[^&\\\"<>]+",
-                              href,
-                              re.I
-                          )
-                          if not match:
-                              continue
-
-                          official_url = urllib.parse.unquote(match.group(0))
-                          title = clean(a.get_text(" ", strip=True))
-                          if title:
-                              add_result(official_url, title)
-
-                      # Also inspect the rendered text for direct official URLs.
-                      for match in re.findall(
-                          r"https?://(?:www\\.)?glamorgancricket\\.com/news/[A-Za-z0-9%_./?&=+\-–’'()]+",
-                          html,
-                          re.I
-                      ):
-                          add_result(urllib.parse.unquote(match), "Glamorgan Cricket news")
-                  except Exception as e:
-                      print(f"Glamorgan: Google search failed: {e}")
-
-              # DuckDuckGo HTML is a second independent index.
-              if len(stories) < 3:
-                  for query in queries:
+                  # Resolve the Google News redirect so Discord links go
+                  # directly to ESPNcricinfo where possible.
+                  if link:
                       try:
-                          search_url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
-                          html = fetch(search_url).decode("utf-8", errors="replace")
-                          soup = BeautifulSoup(html, "html.parser")
+                          request = urllib.request.Request(
+                              link,
+                              headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
+                          )
+                          with urllib.request.urlopen(request, timeout=10) as response:
+                              resolved = response.geturl()
+                              if "espncricinfo.com" in urllib.parse.urlparse(resolved).netloc:
+                                  link = resolved.split("#", 1)[0]
+                      except Exception:
+                          pass
 
-                          for result in soup.select(".result"):
-                              a = result.select_one("a.result__a")
-                              if not a:
-                                  continue
+                  if not link or "espncricinfo.com" not in urllib.parse.urlparse(link).netloc:
+                      continue
 
-                              href = a.get("href", "")
-                              official_url = ""
-                              if "glamorgancricket.com/news/" in href:
-                                  official_url = href
-                              else:
-                                  # DDG often wraps the destination in uddg=.
-                                  parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-                                  official_url = parsed.get("uddg", [""])[0]
+                  text = f"{title} {description}".lower()
+                  county_term = county.lower()
+                  if county_term not in text:
+                      continue
+                  if any(term in text for term in EXCLUDE_TERMS):
+                      continue
 
-                              if "glamorgancricket.com/news/" not in official_url:
-                                  continue
+                  if not pub_date:
+                      continue
+                  if pub_date < cutoff or pub_date > now + timedelta(minutes=10):
+                      continue
 
-                              snippet = result.select_one(".result__snippet")
-                              add_result(
-                                  official_url,
-                                  a.get_text(" ", strip=True),
-                                  snippet.get_text(" ", strip=True) if snippet else ""
-                              )
-                      except Exception as e:
-                          print(f"Glamorgan: DuckDuckGo search failed: {e}")
+                  score = sum(1 for term in IMPORTANT_TERMS if term in text)
+                  if score == 0:
+                      continue
 
-              result = list(stories.values())
-              print(f"Glamorgan: indexed search found {len(result)} candidate stories.")
-              return result[:8]
+                  stories.append({
+                      "county": county,
+                      "title": title,
+                      "description": description,
+                      "link": link,
+                      "published": pub_date,
+                      "score": score
+                  })
+
+              unique = {}
+              for story in stories:
+                  unique[story["link"]] = story
+
+              result = sorted(
+                  unique.values(),
+                  key=lambda x: (x["score"], x["published"]),
+                  reverse=True
+              )[:8]
+
+              print(f"{county}: ESPNcricinfo fallback found {len(result)} candidate stories.")
+              return result
 
           def candidate_links(index_url, pattern):
               html = fetch(index_url)
@@ -432,50 +421,30 @@ jobs:
                   print(f"{county}: skipped - {webhook_key} is not configured yet.")
                   continue
 
-              if county == "Glamorgan":
-                  try:
-                      rss_stories = glamorgan_rss_stories()
-                  except Exception as e:
-                      print(f"{county}: RSS discovery failed: {e}")
-                      continue
-
-                  print(f"{county}: RSS found {len(rss_stories)} candidate stories.")
-                  for rss_story in rss_stories:
-                      link = rss_story["link"]
-                      if link in seen:
-                          continue
-                      published = rss_story["published"]
-                      if published < cutoff or published > now + timedelta(minutes=10):
-                          print(f"{county}: skipped {link} - published {published.isoformat()} outside lookback")
-                          continue
-
-                      checked_links.add(link)
-                      title = rss_story["title"]
-                      description = clean(rss_story["description"])
-                      text = f"{title} {description}".lower()
-                      if any(term in text for term in EXCLUDE_TERMS):
-                          print(f"{county}: filtered {title}")
-                          continue
-
-                      score = sum(1 for term in IMPORTANT_TERMS if term in text)
-                      if score == 0:
-                          print(f"{county}: skipped {title} - no important terms")
-                          continue
-
-                      print(f"{county}: qualifying story - {title}")
-                      found.append({
-                          "county": county,
-                          "webhook_key": webhook_key,
-                          "title": title,
-                          "description": description,
-                          "link": link,
-                          "published": published.isoformat(),
-                          "score": score
-                      })
-                  continue
-
               try:
                   links = candidate_links(index_url, pattern)
+              except urllib.error.HTTPError as e:
+                  if e.code == 403 and county in ("Glamorgan", "Gloucestershire"):
+                      print(f"{county}: official site returned HTTP 403; using ESPNcricinfo fallback.")
+                      for fallback_story in espncricinfo_fallback(county):
+                          link = fallback_story["link"]
+                          if link in seen:
+                              continue
+
+                          checked_links.add(link)
+                          found.append({
+                              "county": county,
+                              "webhook_key": webhook_key,
+                              "title": fallback_story["title"],
+                              "description": fallback_story["description"],
+                              "link": link,
+                              "published": fallback_story["published"].isoformat(),
+                              "score": fallback_story["score"]
+                          })
+                      continue
+
+                  print(f"{county}: index failed: {e}")
+                  continue
               except Exception as e:
                   print(f"{county}: index failed: {e}")
                   continue
