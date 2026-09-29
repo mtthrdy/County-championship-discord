@@ -306,7 +306,11 @@ jobs:
                   lines.append("_No fixtures scheduled._")
               else:
                   for home, away in fixtures:
-                      stream_url = YOUTUBE_CHANNELS.get(home)\n                      if stream_url:\n                          lines.append(f"🏏 **{home} v {away}** — [Watch Stream]({stream_url})")\n                      else:\n                          lines.append(f"🏏 **{home} v {away}**")
+                      stream_url = YOUTUBE_CHANNELS.get(home)
+                      if stream_url:
+                          lines.append(f"🏏 **{home} v {away}** — [Watch Stream]({stream_url})")
+                      else:
+                          lines.append(f"🏏 **{home} v {away}**")
               lines.append("")
 
           lines.extend([
