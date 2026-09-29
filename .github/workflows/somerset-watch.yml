@@ -3,10 +3,9 @@ name: County Website Watch
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC, so run at both 08:00 and 09:00 UTC and
-    # let Python select exactly 09:00 Europe/London year-round.
-    - cron: "0 8 * * *"
+    # Run at 09:00 Europe/London year-round; GitHub handles BST/GMT.
     - cron: "0 9 * * *"
+      timezone: "Europe/London"
 
 permissions:
   contents: write
@@ -446,18 +445,9 @@ jobs:
 
           now = datetime.now(timezone.utc)
 
-          # Scheduled runs: only continue at 09:00 UK time, regardless of BST/GMT.
-          # Manual runs are always allowed.
-          if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
-              from zoneinfo import ZoneInfo
-              if now.astimezone(ZoneInfo("Europe/London")).hour != 9:
-                  print("Not the 09:00 UK run; exiting.")
-                  raise SystemExit(0)
-
-          # Manual runs use a wider window so we can test the collector even
-          # when Somerset has not published anything in the last couple of hours.
-          # Scheduled runs stay tight to avoid reposting older stories.
-          lookback_hours = 168 if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else 26
+          # Manual and scheduled runs use the same lookback window so testing
+          # behaves exactly like the daily collector.
+          lookback_hours = 26
           cutoff = now - timedelta(hours=lookback_hours)
           print(f"Looking back {lookback_hours} hours.")
           found = []
