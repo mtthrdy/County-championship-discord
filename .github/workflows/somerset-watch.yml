@@ -236,19 +236,19 @@ jobs:
                   page_text = clean(soup.get_text(" ", strip=True))
                   date_match = re.search(
                       r"\\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\\s+(\\d{1,2})\\s+"
-                      r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+                      r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
                       r"\\s+(\\d{4})\\b",
                       page_text,
                       re.I
                   )
                   if date_match:
-                      try:
-                          published = datetime.strptime(
-                              f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}",
-                              "%d %B %Y"
-                          ).replace(tzinfo=timezone.utc)
-                      except Exception:
-                          pass
+                      date_text = f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}"
+                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
+                          try:
+                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                              break
+                          except Exception:
+                              continue
 
               return title, description, published
 
