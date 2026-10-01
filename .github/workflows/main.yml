@@ -6,10 +6,18 @@ on:
 jobs:
   send-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Send test message to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          curl -H "Content-Type: application/json" \
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL is not configured."
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 \
+            -H "Content-Type: application/json" \
             -d '{"content":"🏏 Test message from the County Championship Discord automation! If you can see this, it works."}' \
-            "${{ secrets.DISCORD_WEBHOOK_URL }}"
+            "$DISCORD_WEBHOOK_URL"
