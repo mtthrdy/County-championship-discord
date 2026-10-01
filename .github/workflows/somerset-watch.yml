@@ -241,91 +241,92 @@ jobs:
                           if published:
                               break
 
-              # Final fallback for county sites that render the publication date
-              # as visible text rather than metadata.
+              # Final fallback: only inspect the article/header area for a visible date.
+              # Searching the whole page is unsafe because navigation, footer and
+              # event pages often contain unrelated future/past dates.
               if not published:
-                  page_text = clean(soup.get_text(" ", strip=True))
+                  scope_texts = []
 
-                  numeric_date = re.search(
-                      r"\b(\d{1,2})[./-](\d{1,2})[./-](202\d|19\d\d)\b",
-                      page_text
-                  )
-                  if numeric_date:
-                      date_text = f"{numeric_date.group(1)}/{numeric_date.group(2)}/{numeric_date.group(3)}"
-                      for date_fmt in ("%d/%m/%Y", "%d/%m/%y"):
-                          try:
-                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
-                              break
-                          except Exception:
-                              continue
+                  article = soup.find("article")
+                  if article:
+                      scope_texts.append(clean(article.get_text(" ", strip=True)))
 
-                  relative = re.search(
-                      r"\b(?:about\s+)?(\d+)\s*(hour|hours|day|days)\s+ago\b",
-                      page_text,
-                      re.I
-                  )
-                  if not published and relative:
-                      amount = int(relative.group(1))
-                      unit = relative.group(2).lower()
-                      delta = timedelta(hours=amount) if unit.startswith("hour") else timedelta(days=amount)
-                      published = now - delta
-                  date_match = re.search(
-                      r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+(\d{1,2})\s+"
-                      r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-                      r"\s+(\d{4})\b",
-                      page_text,
-                      re.I
-                  )
-                  if date_match:
-                      date_text = f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}"
-                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
-                          try:
-                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
-                              break
-                          except Exception:
-                              continue
+                  h1 = soup.find("h1")
+                  if h1:
+                      node = h1
+                      for _ in range(4):
+                          if node and getattr(node, "get_text", None):
+                              text_value = clean(node.get_text(" ", strip=True))
+                              if text_value:
+                                  scope_texts.append(text_value)
+                          node = getattr(node, "parent", None)
 
-              if not published:
-                  page_text = clean(soup.get_text(" ", strip=True))
-                  month_first = re.search(
-                      r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+"
-                      r"(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\b",
-                      page_text,
-                      re.I
-                  )
-                  if not month_first:
-                      month_first = re.search(
-                          r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-                          r"(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\b",
-                          page_text,
+                  for scope_text in scope_texts:
+                      if not scope_text:
+                          continue
+
+                      relative = re.search(
+                          r"\b(?:about\s+)?(\d+)\s*(hour|hours|day|days)\s+ago\b",
+                          scope_text,
                           re.I
                       )
-                  if month_first:
-                      date_text = f"{month_first.group(2)} {month_first.group(1)} {month_first.group(3)}"
-                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
-                          try:
-                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
-                              break
-                          except Exception:
-                              continue
+                      if relative:
+                          amount = int(relative.group(1))
+                          unit = relative.group(2).lower()
+                          delta = timedelta(hours=amount) if unit.startswith("hour") else timedelta(days=amount)
+                          published = now - delta
+                          break
 
-              if not published:
-                  page_text = clean(soup.get_text(" ", strip=True))
-                  day_first = re.search(
-                      r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
-                      r"(January|February|March|April|May|June|July|August|September|October|November|December|"
-                      r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b",
-                      page_text,
-                      re.I
-                  )
-                  if day_first:
-                      date_text = f"{day_first.group(1)} {day_first.group(2)} {day_first.group(3)}"
-                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
-                          try:
-                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                      numeric_date = re.search(
+                          r"\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b",
+                          scope_text
+                      )
+                      if numeric_date:
+                          date_text = f"{numeric_date.group(1)}/{numeric_date.group(2)}/{numeric_date.group(3)}"
+                          for date_fmt in ("%d/%m/%Y",):
+                              try:
+                                  published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                                  break
+                              except Exception:
+                                  pass
+                          if published:
                               break
-                          except Exception:
-                              continue
+
+                      month_first = re.search(
+                          r"\b(January|February|March|April|May|June|July|August|September|October|November|December|"
+                          r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+                          r"(\d{1,2})(?:st|nd|rd|th)?,\s+(20\d{2})\b",
+                          scope_text,
+                          re.I
+                      )
+                      if month_first:
+                          date_text = f"{month_first.group(2)} {month_first.group(1)} {month_first.group(3)}"
+                          for date_fmt in ("%d %B %Y", "%d %b %Y"):
+                              try:
+                                  published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                                  break
+                              except Exception:
+                                  continue
+                          if published:
+                              break
+
+                      day_first = re.search(
+                          r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
+                          r"(January|February|March|April|May|June|July|August|September|October|November|December|"
+                          r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(20\d{2})\b",
+                          scope_text,
+                          re.I
+                      )
+                      if day_first:
+                          date_text = f"{day_first.group(1)} {day_first.group(2)} {day_first.group(3)}"
+                          for date_fmt in ("%d %B %Y", "%d %b %Y"):
+                              try:
+                                  published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                                  break
+                              except Exception:
+                                  continue
+                          if published:
+                              break
 
               return title, description, published
 
@@ -557,6 +558,10 @@ jobs:
                   # county-news patterns.
                   if path_lower.startswith("/news/category/"):
                       continue
+                  if re.match(r"^/(?:category|author|tag|page)(?:/|$)", path_lower):
+                      continue
+                  if re.search(r"/page/\d+/?$", path_lower):
+                      continue
                   if county_context == "Durham":
                       blocked_paths = (
                           "/news-and-media/durhamcricket",
@@ -580,7 +585,9 @@ jobs:
                           "/guildford-match-day-guide", "/tickets", "/hospitality", "/events/",
                           "/landing", "/videos", "/home", "/contact", "/privacy", "/terms",
                           "/food-drink", "/our-squad", "/sustainability", "/foundation",
-                          "/shop", "/teams", "/club", "/matches"
+                          "/shop", "/teams", "/club", "/matches", "/statistics", "/our-sponsors",
+                          "/premium-seats", "/visiting-us", "/for-everyone", "/accessibility",
+                          "/vip-experiences", "/cricket-centre", "/cookie-policy"
                       )
                       if any(path_lower.startswith(prefix) for prefix in blocked_prefixes):
                           continue
@@ -589,6 +596,16 @@ jobs:
                   # pages alongside actual cricket stories. Avoid fetching those.
                   if county_context == "Hampshire":
                       blocked = (
+                          "/cricket/news/venue",
+                          "/cricket/news/cricket",
+                          "/cricket/news/hampshire-wellbeing-centre",
+                          "/cricket/news/wedding-and-events",
+                          "/cricket/news/christmas-and-new-year",
+                          "/cricket/news/meetings-and-conferences",
+                          "/cricket/news/foundation",
+                          "/cricket/news/cricket-board",
+                          "/cricket/news/ageas-bowl-live",
+                          "/cricket/news/privacy",
                           "/cricket/news/golf",
                           "/cricket/news/hotel",
                           "/cricket/news/eforea",
@@ -878,11 +895,12 @@ jobs:
               if not_important:
                   detail.append(f"{not_important} lacked important terms")
 
-              return (
-                  "🔎 **Manual diagnostic**\n"
-                  + " · ".join(detail)
+              diagnostic = (
+                  " · ".join(detail)
                   + ". No new qualifying stories were found in the last 26 hours."
               )
+              print(f"{county}: DIAGNOSTIC - {diagnostic}")
+              return "🔎 **Manual diagnostic**\\n" + diagnostic
 
           def send_manual_no_story_messages():
               counties_with_stories = {item["webhook_key"] for item in found}
