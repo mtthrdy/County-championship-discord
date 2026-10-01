@@ -228,7 +228,7 @@ jobs:
               reverse=True
           )
 
-          articles = unique[:5]
+          candidates = unique[:5]
 
           def summarise(article):
               description = article["description"]
@@ -304,35 +304,36 @@ jobs:
               ""
           ]
 
-          if articles:
-              for article in articles:
-                  summary = summarise(article)
-                  emoji = story_emoji(article)
+          selected_articles = []
 
-                  if summary:
-                      lines.append(
-                          f"{emoji} **{article['title']}** {summary}"
-                      )
-                  else:
-                      lines.append(
-                          f"{emoji} **{article['title']}**"
-                      )
+          for article in candidates:
+              summary = summarise(article)
+              emoji = story_emoji(article)
 
-                  lines.append(
-                      f"*{article['source']} ·* **[Read the full story →]({article['link']})**"
-                  )
-                  lines.append("")
+              article_lines = []
+              if summary:
+                  article_lines.append(f"{emoji} **{article['title']}** {summary}")
+              else:
+                  article_lines.append(f"{emoji} **{article['title']}**")
 
-          else:
-              lines.append(
-                  "No new County Championship stories were found in the last 24 hours."
-              )
+              article_lines.extend([
+                  f"*{article['source']} ·* **[Read the full story →]({article['link']})**",
+                  ""
+              ])
+
+              trial = "\n".join(lines + article_lines)
+              if len(trial) > 1900:
+                  break
+
+              lines.extend(article_lines)
+              selected_articles.append(article)
+
+          articles = selected_articles
+
+          if not articles:
+              lines.append("No new County Championship stories were found in the last 24 hours.")
 
           message = "\n".join(lines)
-
-          # Discord has a 2,000 character message limit.
-          if len(message) > 1900:
-              message = message[:1897].rsplit("\n", 1)[0] + "..."
 
           with open("discord-message.json", "w") as f:
               json.dump({
