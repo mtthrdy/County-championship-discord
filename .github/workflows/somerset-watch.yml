@@ -70,20 +70,20 @@ jobs:
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
               ("Essex", "https://essexcricket.org.uk/news/", r"/\d{4}/\d{2}/\d{2}/[^/]+/?$", "ESSEX_WEBHOOK_URL"),
-              ("Gloucestershire", "https://www.gloscricket.co.uk/news/", r"/news/[^/]+/?$", "GLOUCESTERSHIRE_WEBHOOK_URL"),
-              ("Leicestershire", "https://leicestershireccc.co.uk/news", r"/news/[^/]+/?$", "LEICESTERSHIRE_WEBHOOK_URL"),
-              ("Middlesex", "https://www.middlesexccc.com/news", r"/news/[^/]+/?$", "MIDDLESEX_WEBHOOK_URL"),
-              ("Northamptonshire", "https://nccc.co.uk/", r"/news/[^/]+/?$", "NORTHAMPTONSHIRE_WEBHOOK_URL"),
-              ("Sussex", "https://sussexcricket.co.uk/", r"/news/[^/]+/?$", "SUSSEX_WEBHOOK_URL"),
-              ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/[^/]+/?$", "YORKSHIRE_WEBHOOK_URL"),
-              ("Worcestershire", "https://wccc.co.uk/news/", r"/news/[^/]+/?$", "WORCESTERSHIRE_WEBHOOK_URL"),
+              ("Gloucestershire", "https://www.gloscricket.co.uk/news/", r"/news/.+", "GLOUCESTERSHIRE_WEBHOOK_URL"),
+              ("Leicestershire", "https://leicestershireccc.co.uk/news", r"/news/.+", "LEICESTERSHIRE_WEBHOOK_URL"),
+              ("Middlesex", "https://www.middlesexccc.com/news", r"/news/.+", "MIDDLESEX_WEBHOOK_URL"),
+              ("Northamptonshire", "https://nccc.co.uk/", r"/news/.+", "NORTHAMPTONSHIRE_WEBHOOK_URL"),
+              ("Sussex", "https://sussexcricket.co.uk/", r"/news/.+", "SUSSEX_WEBHOOK_URL"),
+              ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/.+", "YORKSHIRE_WEBHOOK_URL"),
+              ("Worcestershire", "https://wccc.co.uk/news/", r"/news/.+", "WORCESTERSHIRE_WEBHOOK_URL"),
               ("Warwickshire", "https://www.edgbaston.com/news", r"/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
               ("Hampshire", "https://www.ageasbowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
-              ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/[^/]+/?$", "KENT_WEBHOOK_URL"),
+              ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/.+", "KENT_WEBHOOK_URL"),
               ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/\d{4}-news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
               ("Nottinghamshire", "https://www.trentbridge.co.uk/news/", r"/news/\d{4}/[^/]+/[^/]+\.html$", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
               ("Surrey", "https://www.kiaoval.com/latest-news/", r"/[^/]+/?$", "SURREY_WEBHOOK_URL"),
-              ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
+              ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/.+", "GLAMORGAN_WEBHOOK_URL")
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -239,9 +239,9 @@ jobs:
               if not published:
                   page_text = clean(soup.get_text(" ", strip=True))
                   date_match = re.search(
-                      r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\\s+(\\d{1,2})\\s+"
+                      r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+(\d{1,2})\s+"
                       r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-                      r"\s+(\\d{4})\\b",
+                      r"\s+(\d{4})\b",
                       page_text,
                       re.I
                   )
@@ -504,7 +504,7 @@ jobs:
                       re.I
                   )
                   relative_pattern = re.compile(
-                      r"(?<![A-Za-z0-9])(/\\d{4}/\\d{2}/[^\s\"'<>]+)",
+                      r"(?<![A-Za-z0-9])(/\d{4}/\d{2}/[^\s\"'<>]+)",
                       re.I
                   )
 
@@ -696,15 +696,15 @@ jobs:
           def story_emoji(item):
               text = (item["title"] + " " + item["description"]).lower()
 
-              if re.search(r"\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
+              if re.search(r"\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\b", text):
                   return "🏆"
-              if re.search(r"\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
+              if re.search(r"\bhat[- ]trick|five[- ]for|wicket haul\b", text):
                   return "🎯"
-              if re.search(r"\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
+              if re.search(r"\b\d{3}\b|\bcentur(?:y|ies)\b|double hundred", text):
                   return "💯"
-              if re.search(r"\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day\\b", text):
+              if re.search(r"\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day\b", text):
                   return "🔥"
-              if re.search(r"\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
+              if re.search(r"\bwin(?:s|ning)?|victory|defeat|beaten\b", text):
                   return "🏏"
               return "📰"
 
