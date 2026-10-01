@@ -510,7 +510,29 @@ jobs:
               base = urllib.parse.urlparse(index_url)
               links = []
 
-              for a in soup.find_all("a", href=True):
+              # Prefer links inside the page's main content. This avoids pulling
+              # large numbers of navigation/footer links into the article parser.
+              content_root = soup.find("main") or soup.find("article") or soup
+              anchors = content_root.find_all("a", href=True)
+
+              # If the site's main container is unusually sparse, fall back to
+              # the full page so we do not miss article links.
+              if len(anchors) < 3:
+                  anchors = soup.find_all("a", href=True)
+
+              generic_blocked_prefixes = (
+                  "/about", "/contact", "/privacy", "/terms", "/cookies",
+                  "/membership", "/newsletter", "/fixtures", "/results",
+                  "/league-tables", "/tables", "/tickets", "/hospitality",
+                  "/events/", "/events", "/shop", "/vacancies", "/jobs",
+                  "/sponsorship", "/partners", "/foundation", "/community",
+                  "/academy", "/pathway", "/junior", "/women", "/media",
+                  "/videos", "/video", "/gallery", "/podcast", "/food-drink",
+                  "/venue", "/corporate", "/history", "/club", "/teams",
+                  "/team", "/matches", "/match-centre", "/match-day-guide"
+              )
+
+              for a in anchors:
                   href = urllib.parse.urljoin(index_url, a["href"])
                   parsed = urllib.parse.urlparse(href)
 
@@ -524,10 +546,31 @@ jobs:
                       continue
 
                   canonical = href.split("#", 1)[0].rstrip("/")
+                  path_lower = parsed.path.lower()
+
+                  # Generic site-navigation exclusions that should never be
+                  # mistaken for a county news article.
+                  if any(path_lower.startswith(prefix) for prefix in generic_blocked_prefixes):
+                      continue
+
+                  # Common category/section URLs that match otherwise broad
+                  # county-news patterns.
+                  if path_lower.startswith("/news/category/"):
+                      continue
+                  if county_context == "Durham":
+                      blocked_paths = (
+                          "/news-and-media/durhamcricket",
+                          "/news-and-media/cwc-19",
+                          "/news-and-media/partners",
+                          "/news-and-media/recreational-cricket",
+                          "/news-and-media/womens-cricket"
+                      )
+                      if any(path_lower == path for path in blocked_paths):
+                          continue
 
                   # Some news indexes link to their own root without a trailing
                   # slash, which can evade a simple full-URL comparison.
-                  if county_context == "Somerset" and parsed.path.rstrip("/") == "/news":
+                  if county_context == "Somerset" and path_lower == "/news":
                       continue
 
                   if county_context in ("Warwickshire", "Surrey"):
@@ -536,10 +579,10 @@ jobs:
                           "/league-tables", "/match-day-guide", "/beckenham-match-day-guide",
                           "/guildford-match-day-guide", "/tickets", "/hospitality", "/events/",
                           "/landing", "/videos", "/home", "/contact", "/privacy", "/terms",
-                          "/food-drink", "/our-squad",
-                          "/sustainability", "/foundation", "/shop", "/teams", "/club", "/matches"
+                          "/food-drink", "/our-squad", "/sustainability", "/foundation",
+                          "/shop", "/teams", "/club", "/matches"
                       )
-                      if any(parsed.path.lower().startswith(prefix) for prefix in blocked_prefixes):
+                      if any(path_lower.startswith(prefix) for prefix in blocked_prefixes):
                           continue
 
                   # Ageas Bowl's cricket/news index contains several venue/service
@@ -554,7 +597,7 @@ jobs:
                           "/cricket/news/conference",
                           "/cricket/news/events"
                       )
-                      if any(parsed.path.lower().startswith(path) for path in blocked):
+                      if any(path_lower.startswith(path) for path in blocked):
                           continue
 
                   if canonical not in links:
@@ -582,6 +625,8 @@ jobs:
                           continue
                       if not re.search(pattern, parsed.path, re.I):
                           continue
+                      if any(parsed.path.lower().startswith(prefix) for prefix in generic_blocked_prefixes):
+                          continue
                       candidates.add(clean_url.split("#", 1)[0].rstrip("/"))
 
                   for raw_path in relative_pattern.findall(html):
@@ -589,13 +634,15 @@ jobs:
                       parsed = urllib.parse.urlparse(raw_path)
                       if not re.search(pattern, parsed.path, re.I):
                           continue
+                      if any(parsed.path.lower().startswith(prefix) for prefix in generic_blocked_prefixes):
+                          continue
                       candidates.add(
                           urllib.parse.urljoin(index_url, raw_path).split("#", 1)[0].rstrip("/")
                       )
 
                   links.extend(sorted(candidates))
 
-              return links[:8]
+              return links
 
           webhooks = {
               "SOMERSET_WEBHOOK_URL": os.environ.get("SOMERSET_WEBHOOK_URL", "").strip(),
@@ -637,7 +684,13 @@ jobs:
           for county, index_url, pattern, webhook_key in COUNTIES:
               county_diag[county] = {
                   "candidate_links": 0,
+                  "already_seen": 0,
+                  "article_checked": 0,
+                  "fetch_failures": 0,
                   "metadata_failures": 0,
+                  "outside_window": 0,
+                  "filtered": 0,
+                  "not_important": 0,
                   "index_failed": False,
                   "fallback_candidates": 0
               }
@@ -656,6 +709,7 @@ jobs:
                   for fallback_story in fallback_stories:
                       link = fallback_story["link"]
                       if link in seen:
+                          county_diag[county]["already_seen"] += 1
                           continue
                       checked_links.add(link)
                       found.append({
@@ -673,20 +727,21 @@ jobs:
                   print(f"{county}: index failed: {e}")
                   continue
 
-              print(f"{county}: found {len(links)} candidate links.")
+              print(f"{county}: found {len(links)} candidate URLs after navigation/category filtering.")
               county_diag[county]["candidate_links"] = len(links)
               county_found_before = len(found)
 
               for link in links:
-                  # During manual testing, allow Essex to re-evaluate recent
-                  # links that were seen before its date parsing was fixed.
                   if link in seen:
+                      county_diag[county]["already_seen"] += 1
                       continue
 
                   try:
                       html = fetch(link)
+                      county_diag[county]["article_checked"] += 1
                       title, description, published = article_metadata(link, html)
                   except Exception as e:
+                      county_diag[county]["fetch_failures"] += 1
                       print(f"{county}: article failed {link}: {e}")
                       continue
 
@@ -709,17 +764,20 @@ jobs:
                       print(f"{county}: skipped {link} - title/date missing (title={bool(title)}, published={published})")
                       continue
                   if published < cutoff or published > now + timedelta(minutes=10):
+                      county_diag[county]["outside_window"] += 1
                       print(f"{county}: skipped {link} - published {published.isoformat()} outside lookback")
                       continue
 
                   checked_links.add(link)
                   text = f"{title} {description}".lower()
                   if any(term in text for term in EXCLUDE_TERMS):
+                      county_diag[county]["filtered"] += 1
                       print(f"{county}: filtered {title}")
                       continue
 
                   score = sum(1 for term in IMPORTANT_TERMS if term in text)
                   if score == 0:
+                      county_diag[county]["not_important"] += 1
                       print(f"{county}: skipped {title} - no important terms")
                       continue
 
@@ -738,6 +796,7 @@ jobs:
                   for fallback_story in google_news_official_fallback(county, index_url):
                       link = fallback_story["link"]
                       if link in seen:
+                          county_diag[county]["already_seen"] += 1
                           continue
                       checked_links.add(link)
                       found.append({
@@ -779,8 +838,8 @@ jobs:
                   if info.get("fallback_candidates"):
                       return (
                           f"🔎 **Manual diagnostic**\n"
-                          f"{info['fallback_candidates']} fallback article(s) were found, "
-                          f"but none were new qualifying stories."
+                          f"{info['fallback_candidates']} fallback article(s) were found. "
+                          f"{info.get('already_seen', 0)} were already seen; no new qualifying story was posted."
                       )
                   return (
                       "🔎 **Manual diagnostic**\n"
@@ -789,22 +848,40 @@ jobs:
                   )
 
               candidates = info.get("candidate_links", 0)
-              failures = info.get("metadata_failures", 0)
+              already_seen = info.get("already_seen", 0)
+              article_checked = info.get("article_checked", 0)
+              fetch_failures = info.get("fetch_failures", 0)
+              metadata_failures = info.get("metadata_failures", 0)
+              outside_window = info.get("outside_window", 0)
+              filtered = info.get("filtered", 0)
+              not_important = info.get("not_important", 0)
+
               if candidates == 0:
                   return (
                       "🔎 **Manual diagnostic**\n"
-                      "The news page returned no candidate article links."
+                      "The news page returned no candidate article URLs after filtering."
                   )
-              if failures:
-                  return (
-                      f"🔎 **Manual diagnostic**\n"
-                      f"{candidates} candidate article(s) were found, but {failures} "
-                      f"could not be dated correctly. No new qualifying story was posted."
-                  )
+
+              detail = [
+                  f"{candidates} candidate URL(s) found",
+                  f"{already_seen} already seen",
+                  f"{article_checked} article page(s) fetched"
+              ]
+              if fetch_failures:
+                  detail.append(f"{fetch_failures} fetch failed")
+              if metadata_failures:
+                  detail.append(f"{metadata_failures} missing/unparseable date or title")
+              if outside_window:
+                  detail.append(f"{outside_window} outside the 26-hour window")
+              if filtered:
+                  detail.append(f"{filtered} filtered out")
+              if not_important:
+                  detail.append(f"{not_important} lacked important terms")
+
               return (
                   "🔎 **Manual diagnostic**\n"
-                  f"{candidates} candidate article(s) were checked. "
-                  "No new qualifying stories were found in the last 26 hours."
+                  + " · ".join(detail)
+                  + ". No new qualifying stories were found in the last 26 hours."
               )
 
           def send_manual_no_story_messages():
