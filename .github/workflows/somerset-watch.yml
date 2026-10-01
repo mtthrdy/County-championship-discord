@@ -344,13 +344,14 @@ jobs:
               # generic application scripts rather than JSON-LD. Inspect raw
               # HTML for an explicit datePublished field before giving up.
               if not published:
+                  html_text = html.decode("utf-8", errors="replace") if isinstance(html, bytes) else str(html)
                   raw_date = re.search(
-                      r"datePublished[^A-Za-z0-9]{0,20}([\"'])(20\d{2}-\d{2}-\d{2}T[^\"']+)\1",
-                      html,
+                      r'"datePublished"\s*:\s*"([^"]+)"',
+                      html_text,
                       re.I
                   )
                   if raw_date:
-                      published = parse_date(raw_date.group(2))
+                      published = parse_date(raw_date.group(1))
 
               return title, description, published
 
@@ -808,7 +809,8 @@ jobs:
                       county_diag[county]["article_checked"] += 1
                       title, description, published = article_metadata(link, html)
                   except Exception as e:
-                      county_diag[county]["fetch_failures"] += 1                      print(f"{county}: article failed {link}: {e}")
+                      county_diag[county]["fetch_failures"] += 1
+                      print(f"{county}: article failed {link}: {e}")
                       continue
 
                   if not published and county == "Lancashire":
@@ -861,13 +863,14 @@ jobs:
                               published = None
 
                   if county == "Warwickshire" and not published:
+                      html_text = html.decode("utf-8", errors="replace") if isinstance(html, bytes) else str(html)
                       raw_date = re.search(
-                          r"datePublished[^A-Za-z0-9]{0,20}[\"']?(20\d{2}-\d{2}-\d{2}T[^\"']+)",
-                          html,
+                          r'"datePublished"\s*:\s*"([^"]+)"',
+                          html_text,
                           re.I
                       )
                       if raw_date:
-                          published = parse_date(raw_date.group(2))
+                          published = parse_date(raw_date.group(1))
 
                   if not title or not published:
                       county_diag[county]["metadata_failures"] += 1
