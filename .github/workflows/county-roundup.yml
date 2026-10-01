@@ -177,28 +177,28 @@ jobs:
           # Editorial scoring: prioritise competition-defining events,
           # then major individual performances and dramatic results.
           importance_rules = [
-              (r"\bchampions?\\b", 20),
-              (r"\btitle\\b", 14),
-              (r"\bpromot(?:ed|ion)\\b", 18),
-              (r"\brelegat(?:ed|ion)\\b", 18),
-              (r"\bsurviv(?:e|es|ed|al)\\b", 12),
-              (r"\bfinal[- ]day\\b", 7),
-              (r"\binnings? (?:and|by)\\b", 8),
-              (r"\bone[- ]wicket\\b", 10),
-              (r"\b(?:two|three|four)[- ]wicket\\b", 5),
-              (r"\b(?:five|six|seven|eight|nine|ten)[- ]wicket\\b", 9),
-              (r"\bhat[- ]trick\\b", 12),
-              (r"\b\\d{3}\\b", 10),
-              (r"\b\\d{2,3}\\s*\\b(?:runs?|wickets?)\\b", 5),
-              (r"\bcentur(?:y|ies)\\b", 7),
-              (r"\bfive[- ]for\\b", 8),
-              (r"\brecord\\b", 7),
-              (r"\bthriller\\b", 7),
-              (r"\bdramatic\\b", 5),
-              (r"\bwin(?:s|ning)?\\b", 6),
-              (r"\bvictory\\b", 6),
-              (r"\bdefeat(?:s|ed)?\\b", 4),
-              (r"\bbeaten\\b", 4)
+              (r"\bchampions?\b", 20),
+              (r"\btitle\b", 14),
+              (r"\bpromot(?:ed|ion)\b", 18),
+              (r"\brelegat(?:ed|ion)\b", 18),
+              (r"\bsurviv(?:e|es|ed|al)\b", 12),
+              (r"\bfinal[- ]day\b", 7),
+              (r"\binnings? (?:and|by)\b", 8),
+              (r"\bone[- ]wicket\b", 10),
+              (r"\b(?:two|three|four)[- ]wicket\b", 5),
+              (r"\b(?:five|six|seven|eight|nine|ten)[- ]wicket\b", 9),
+              (r"\bhat[- ]trick\b", 12),
+              (r"\b\d{3}\b", 10),
+              (r"\b\d{2,3}\s*\b(?:runs?|wickets?)\b", 5),
+              (r"\bcentur(?:y|ies)\b", 7),
+              (r"\bfive[- ]for\b", 8),
+              (r"\brecord\b", 7),
+              (r"\bthriller\b", 7),
+              (r"\bdramatic\b", 5),
+              (r"\bwin(?:s|ning)?\b", 6),
+              (r"\bvictory\b", 6),
+              (r"\bdefeat(?:s|ed)?\b", 4),
+              (r"\bbeaten\b", 4)
           ]
 
           for article in unique:
@@ -240,7 +240,7 @@ jobs:
 
               # Remove common RSS boilerplate and avoid repeating the headline.
               description = re.sub(
-                  r"^(?:county championship|county cricket)[:\-–—]?\\s*",
+                  r"^(?:county championship|county cricket)[:\-–—]?\s*",
                   "",
                   description,
                   flags=re.I
@@ -249,7 +249,7 @@ jobs:
               title_words = set(
                   re.findall(r"[a-z0-9']+", article["title"].lower())
               )
-              sentences = re.split(r"(?<=[.!?])\\s+", description)
+              sentences = re.split(r"(?<=[.!?])\s+", description)
 
               useful = []
               for sentence in sentences:
@@ -284,15 +284,15 @@ jobs:
           def story_emoji(article):
               text = (article["title"] + " " + article["description"]).lower()
 
-              if re.search(r"\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
+              if re.search(r"\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\b", text):
                   return "🏆"
-              if re.search(r"\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
+              if re.search(r"\bhat[- ]trick|five[- ]for|wicket haul\b", text):
                   return "🎯"
-              if re.search(r"\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
+              if re.search(r"\b\d{3}\b|\bcentur(?:y|ies)\b|double hundred", text):
                   return "💯"
               if re.search(r"\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day", text):
                   return "🔥"
-              if re.search(r"\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
+              if re.search(r"\bwin(?:s|ning)?|victory|defeat|beaten\b", text):
                   return "🏏"
               return "📰"
 
