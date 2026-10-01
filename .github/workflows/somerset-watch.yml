@@ -448,84 +448,183 @@ jobs:
               print(f"{county}: ESPNcricinfo fallback found {len(result)} candidate stories.")
               return result
 
+          def resolve_search_result(link, domain):
+              """Resolve search-engine links to the official county article where possible."""
+              if not link:
+                  return None
+
+              parsed = urllib.parse.urlparse(link)
+
+              # Bing RSS wraps the destination in /news/apiclick.aspx?url=...
+              if parsed.netloc.lower().removeprefix("www.") == "bing.com" and parsed.path == "/news/apiclick.aspx":
+                  target = urllib.parse.parse_qs(parsed.query).get("url", [None])[0]
+                  if target:
+                      link = urllib.parse.unquote(target)
+
+              try:
+                  request = urllib.request.Request(
+                      link,
+                      headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
+                  )
+                  with urllib.request.urlopen(request, timeout=8) as response:
+                      resolved = response.geturl().split("#", 1)[0]
+              except Exception:
+                  resolved = link.split("#", 1)[0]
+
+              host = urllib.parse.urlparse(resolved).netloc.lower().removeprefix("www.")
+              if host == domain or host.endswith("." + domain):
+                  return resolved
+
+              return None
+
+          def search_news_rss(engine, query):
+              """Return parsed RSS news results from Google News or Bing News."""
+              encoded_query = urllib.parse.quote(query)
+
+              if engine == "google":
+                  rss_url = (
+                      "https://news.google.com/rss/search?q="
+                      + encoded_query
+                      + "&hl=en-GB&gl=GB&ceid=GB:en"
+                  )
+              else:
+                  rss_url = (
+                      "https://www.bing.com/news/search?q="
+                      + encoded_query
+                      + "&qft=sortbydate%3d%221%22&format=RSS&mkt=en-GB"
+                  )
+
+              try:
+                  xml = fetch(rss_url, timeout=12).decode("utf-8", errors="replace")
+                  return ET.fromstring(xml)
+              except Exception as e:
+                  print(f"{engine} news search failed for '{query}': {e}")
+                  return None
+
           def google_news_official_fallback(county, index_url):
+              # Used when an official county index is blocked (or produces no
+              # qualifying stories). Search engines can still discover the public
+              # article pages, and individual article pages are fetched directly
+              # where possible so their own publication date wins over RSS time.
               domain = urllib.parse.urlparse(index_url).netloc.lower().removeprefix("www.")
-              query = f'site:{domain} "{county}" cricket'
-              rss_url = (
-                  "https://news.google.com/rss/search?q="
-                  + urllib.parse.quote(query)
-                  + "&hl=en-GB&gl=GB&ceid=GB:en"
-              )
+
+              queries = [
+                  f'site:{domain} "{county}" cricket',
+                  f'site:{domain} "{county}"',
+                  f'site:{domain} "County Championship"',
+                  f'site:{domain} 2026 cricket',
+              ]
 
               stories = []
-              try:
-                  xml = fetch(rss_url, timeout=10).decode("utf-8", errors="replace")
-                  root = ET.fromstring(xml)
-              except Exception as e:
-                  print(f"{county}: official-site Google News fallback failed: {e}")
-                  return stories
+              seen_links = set()
 
-              for item in root.findall(".//item")[:5]:
-                  title = clean(item.findtext("title", ""))
-                  link = clean(item.findtext("link", ""))
-                  description = clean(BeautifulSoup(
-                      item.findtext("description", ""), "html.parser"
-                  ).get_text(" ", strip=True))
-                  published = parse_date(item.findtext("pubDate", ""))
-                  source = item.find("source")
-                  source_url = clean(source.get("url", "") if source is not None else "").lower()
+              for engine in ("google", "bing"):
+                  for query in queries:
+                      root = search_news_rss(engine, query)
+                      if root is None:
+                          continue
 
-                  if not title or not link or not published:
-                      continue
-                  if published < cutoff or published > now + timedelta(minutes=10):
-                      continue
+                      for item in root.findall(".//item")[:10]:
+                          title = clean(item.findtext("title", ""))
+                          link = clean(item.findtext("link", ""))
+                          description = clean(BeautifulSoup(
+                              item.findtext("description", ""), "html.parser"
+                          ).get_text(" ", strip=True))
+                          rss_published = parse_date(item.findtext("pubDate", ""))
 
-                  resolved = link
-                  try:
-                      request = urllib.request.Request(
-                          link,
-                          headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
-                      )
-                      with urllib.request.urlopen(request, timeout=5) as response:
-                          resolved = response.geturl().split("#", 1)[0]
-                  except Exception:
-                      pass
+                          if not title or not link or not rss_published:
+                              continue
+                          if rss_published < cutoff - timedelta(days=1) or rss_published > now + timedelta(minutes=30):
+                              continue
 
-                  resolved_host = urllib.parse.urlparse(resolved).netloc.lower().removeprefix("www.")
-                  if not (
-                      resolved_host == domain
-                      or resolved_host.endswith("." + domain)
-                      or domain in source_url
-                  ):
-                      continue
+                          source = item.find("source")
+                          source_url = clean(
+                              source.get("url", "") if source is not None else ""
+                          ).lower()
 
-                  text = f"{title} {description}".lower()
-                  if any(term in text for term in EXCLUDE_TERMS):
-                      continue
+                          resolved = resolve_search_result(link, domain)
 
-                  score = sum(1 for term in IMPORTANT_TERMS if term in text)
-                  if score == 0:
-                      continue
+                          # Google News sometimes supplies the official domain in
+                          # <source> even when its redirect cannot be resolved.
+                          if not resolved and domain not in source_url:
+                              continue
 
-                  stories.append({
-                      "county": county,
-                      "title": title,
-                      "description": description,
-                      "link": resolved,
-                      "published": published,
-                      "score": score,
-                      "source": "Official site via Google News discovery"
-                  })
+                          official_link = resolved or link
+
+                          if official_link in seen_links or official_link in seen:
+                              continue
+
+                          text = f"{title} {description}".lower()
+                          county_terms = {
+                              county.lower(),
+                              f"{county.lower()} cricket"
+                          }
+                          if not any(term in text for term in county_terms):
+                              continue
+
+                          if any(term in text for term in EXCLUDE_TERMS):
+                              continue
+
+                          score = sum(1 for term in IMPORTANT_TERMS if term in text)
+                          if score == 0:
+                              continue
+
+                          published = rss_published
+                          article_title = title
+                          article_description = description
+
+                          # When the direct article is reachable, use its actual
+                          # metadata instead of the search engine's timestamp.
+                          if resolved:
+                              try:
+                                  article_html = fetch(resolved, timeout=10)
+                                  real_title, real_description, real_published = article_metadata(
+                                      resolved, article_html
+                                  )
+                                  if real_title:
+                                      article_title = real_title
+                                  if real_description:
+                                      article_description = real_description
+                                  if real_published:
+                                      published = real_published
+                              except Exception as e:
+                                  print(f"{county}: fallback article metadata failed for {resolved}: {e}")
+
+                          if published < cutoff or published > now + timedelta(minutes=30):
+                              continue
+
+                          final_text = f"{article_title} {article_description}".lower()
+                          if any(term in final_text for term in EXCLUDE_TERMS):
+                              continue
+
+                          final_score = sum(
+                              1 for term in IMPORTANT_TERMS if term in final_text
+                          )
+                          if final_score == 0:
+                              continue
+
+                          seen_links.add(official_link)
+                          stories.append({
+                              "county": county,
+                              "title": article_title,
+                              "description": article_description,
+                              "link": official_link,
+                              "published": published,
+                              "score": final_score,
+                              "source": "Official site via news search discovery"
+                          })
 
               unique = {}
               for story in stories:
                   unique[story["link"]] = story
+
               result = sorted(
                   unique.values(),
                   key=lambda x: (x["score"], x["published"]),
                   reverse=True
               )[:3]
-              print(f"{county}: official-site Google News fallback found {len(result)} candidate stories.")
+
+              print(f"{county}: official-site news-search fallback found {len(result)} candidate stories.")
               return result
 
           index_date_by_url = {}
