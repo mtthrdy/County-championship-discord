@@ -318,7 +318,7 @@ jobs:
                   print(f"{county}: ESPNcricinfo fallback failed: {e}")
                   return stories
 
-              for item in root.findall(".//item"):
+              for item in root.findall(".//item")[:5]:
                   title = clean(item.findtext("title", ""))
                   link = clean(item.findtext("link", ""))
                   pub_date = parse_date(item.findtext("pubDate", ""))
@@ -425,7 +425,7 @@ jobs:
                           link,
                           headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
                       )
-                      with urllib.request.urlopen(request, timeout=8) as response:
+                      with urllib.request.urlopen(request, timeout=5) as response:
                           resolved = response.geturl().split("#", 1)[0]
                   except Exception:
                       pass
