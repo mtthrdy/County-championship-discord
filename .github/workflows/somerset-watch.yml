@@ -97,7 +97,6 @@ jobs:
               "Glamorgan",
           }
           COUNTIES = [county for county in ALL_COUNTIES if county[0] in ACTIVE_COUNTIES]
-          ]
 
           # The bot is intended for county men's cricket and significant club news.
           # Commercial, ticketing, hospitality, community and women's-only articles
