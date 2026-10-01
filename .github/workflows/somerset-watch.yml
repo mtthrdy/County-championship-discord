@@ -77,7 +77,7 @@ jobs:
               ("Sussex", "https://sussexcricket.co.uk/", r"/news/.+", "SUSSEX_WEBHOOK_URL"),
               ("Yorkshire", "https://yorkshireccc.com/news/", r"/news/.+", "YORKSHIRE_WEBHOOK_URL"),
               ("Worcestershire", "https://wccc.co.uk/news/", r"/news/.+", "WORCESTERSHIRE_WEBHOOK_URL"),
-              ("Warwickshire", "https://www.edgbaston.com/warwickshire-ccc/news", r"/warwickshire-ccc/news/media-article/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
+              ("Warwickshire", "https://www.edgbaston.com/warwickshire-ccc/news", r"/warwickshire-ccc/media-article/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
               ("Hampshire", "https://www.utilitabowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
               ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/.+", "KENT_WEBHOOK_URL"),
               ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/\d{4}-news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
