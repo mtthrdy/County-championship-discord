@@ -93,7 +93,6 @@ jobs:
               "Middlesex",
               "Warwickshire",
               "Hampshire",
-              "Lancashire",
               "Glamorgan",
           }
           COUNTIES = [county for county in ALL_COUNTIES if county[0] in ACTIVE_COUNTIES]
@@ -575,11 +574,11 @@ jobs:
                   canonical = href.split("#", 1)[0].rstrip("/")
                   path_lower = parsed.path.lower()
 
-                  if county_context == "Lancashire":
-                      # Lancashire's article pages do not expose a usable publication
-                      # date in the HTML, but the 2026 news index places each article
-                      # alongside its publication date. Capture that date while we
-                      # still have the index page in hand.
+                  if county_context in ("Lancashire", "Middlesex", "Warwickshire"):
+                      # Some article pages do not expose a usable publication date
+                      # in their HTML, but the news index places each article alongside
+                      # a publication date. Capture that date while we still have the
+                      # index page in hand.
                       node = a
                       for _ in range(5):
                           if not node:
@@ -597,6 +596,19 @@ jobs:
                               if parsed_index_date:
                                   index_date_by_url[canonical] = parsed_index_date
                                   break
+
+                          relative_match = re.search(
+                              r"\b(?:about\s+)?(\d+)\s*(hour|hours|day|days)\s+ago\b",
+                              context_text,
+                              re.I
+                          )
+                          if relative_match:
+                              amount = int(relative_match.group(1))
+                              unit = relative_match.group(2).lower()
+                              delta = timedelta(hours=amount) if unit.startswith("hour") else timedelta(days=amount)
+                              index_date_by_url[canonical] = now - delta
+                              break
+
                           node = node.parent
 
                   # Generic site-navigation exclusions that should never be
@@ -813,7 +825,7 @@ jobs:
                       print(f"{county}: article failed {link}: {e}")
                       continue
 
-                  if not published and county == "Lancashire":
+                  if not published and county in ("Lancashire", "Middlesex", "Warwickshire"):
                       published = index_date_by_url.get(link)
 
                   if not published and county == "Middlesex":
