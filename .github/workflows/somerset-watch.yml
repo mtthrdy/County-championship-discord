@@ -162,6 +162,11 @@ jobs:
           def article_metadata(url, html):
               soup = BeautifulSoup(html, "html.parser")
 
+              # Reject section/index pages masquerading as stories.
+              page_path = urllib.parse.urlparse(url).path.rstrip("/")
+              if page_path in {"/news", "/latest-news", "/cricket/news"}:
+                  return "", "", None
+
               title = ""
               h1 = soup.find("h1")
               if h1:
@@ -386,6 +391,13 @@ jobs:
                   if pub_date < cutoff or pub_date > now + timedelta(minutes=10):
                       continue
 
+                  if title.strip().lower() in {
+                      "somerset county cricket club | news and updates",
+                      "somerset county cricket club - news and updates"
+                  }:
+                      print(f"{county}: skipped generic news index page: {title}")
+                      continue
+
                   score = sum(1 for term in IMPORTANT_TERMS if term in text)
                   if score == 0:
                       continue
@@ -512,6 +524,11 @@ jobs:
                       continue
 
                   canonical = href.split("#", 1)[0].rstrip("/")
+
+                  # Some news indexes link to their own root without a trailing
+                  # slash, which can evade a simple full-URL comparison.
+                  if county_context == "Somerset" and parsed.path.rstrip("/") == "/news":
+                      continue
 
                   if county_context in ("Warwickshire", "Surrey"):
                       blocked_prefixes = (
