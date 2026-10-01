@@ -90,8 +90,6 @@ jobs:
           # by adding their names here rather than rebuilding their entries.
           ACTIVE_COUNTIES = {
               "Gloucestershire",
-              "Middlesex",
-              "Warwickshire",
               "Hampshire",
               "Glamorgan",
           }
@@ -102,7 +100,8 @@ jobs:
           # are filtered unless the article is clearly about the men's first team.
           EXCLUDE_TERMS = [
               "women's cricket", "women’s cricket", "women's team", "women’s team",
-              "women v", "women vs", "ladies", "foundation", "community",
+              "women v", "women vs", "women's ", "women’s ", "women ",
+              "female ", "girls ", "girls'", "ladies", "foundation", "community",
               "hospitality", "membership", "ticket", "tickets", "christmas",
               "vacancy", "job opportunity", "commercial partner", "sponsorship"
           ]
@@ -511,6 +510,7 @@ jobs:
               domain = urllib.parse.urlparse(index_url).netloc.lower().removeprefix("www.")
 
               queries = [
+                  f'site:{domain}/cricket/news/ cricket',
                   f'site:{domain} "{county}" cricket',
                   f'site:{domain} "{county}"',
                   f'site:{domain} "County Championship"',
@@ -557,12 +557,9 @@ jobs:
                               continue
 
                           text = f"{title} {description}".lower()
-                          county_terms = {
-                              county.lower(),
-                              f"{county.lower()} cricket"
-                          }
-                          if not any(term in text for term in county_terms):
-                              continue
+                          # The search itself is restricted to the official county
+                          # domain, so the county name does not need to appear in the headline.
+                          # This prevents false negatives on short official headlines.
 
                           if any(term in text for term in EXCLUDE_TERMS):
                               continue
