@@ -431,7 +431,11 @@ jobs:
                       pass
 
                   resolved_host = urllib.parse.urlparse(resolved).netloc.lower().removeprefix("www.")
-                  if domain not in resolved_host and domain not in source_url:
+                  if not (
+                      resolved_host == domain
+                      or resolved_host.endswith("." + domain)
+                      or domain in source_url
+                  ):
                       continue
 
                   text = f"{title} {description}".lower()
@@ -448,7 +452,8 @@ jobs:
                       "description": description,
                       "link": resolved,
                       "published": published,
-                      "score": score
+                      "score": score,
+                      "source": "Official site via Google News discovery"
                   })
 
               unique = {}
@@ -753,8 +758,9 @@ jobs:
                   else:
                       lines.append(f"{emoji} **{item['title']}**")
 
+                  source_label = item.get("source", "Official county site")
                   lines.append(
-                      f"*Official county site ·* **[Read the full story →]({item['link']})**"
+                      f"*{source_label} ·* **[Read the full story →]({item['link']})**"
                   )
                   lines.append("")
 
