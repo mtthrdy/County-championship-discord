@@ -634,6 +634,20 @@ jobs:
                       continue
 
                   if not title or not published:
+                      # A reachable article with an unparseable publication date is
+                      # not necessarily invalid; use a conservative fallback based
+                      # on the URL for date-based county sites.
+                      url_date_match = re.search(r"/(2026)[-/](09|10)[-/](\d{1,2})", urllib.parse.urlparse(link).path)
+                      if not url_date_match:
+                          url_date_match = re.search(r"/(2026)[-/](09|10)[^/]*[-/](\d{1,2})(?:[-/]|$)", urllib.parse.urlparse(link).path)
+                      if url_date_match and not published:
+                          try:
+                              year, month, day = [int(x) for x in url_date_match.groups()]
+                              published = datetime(year, month, day, tzinfo=timezone.utc)
+                          except Exception:
+                              published = None
+
+                  if not title or not published:
                       print(f"{county}: skipped {link} - title/date missing (title={bool(title)}, published={published})")
                       continue
                   if published < cutoff or published > now + timedelta(minutes=10):
