@@ -149,7 +149,8 @@ jobs:
               # e.g. "24 September 26".
               value = re.sub(r"^(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)\s+", "", value, flags=re.I)
               value = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", value, flags=re.I)
-              for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y"):
+              for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y",
+                          "%d/%m/%Y", "%d/%m/%y", "%d.%m.%Y", "%d-%m-%Y", "%Y-%m-%d"):
                   try:
                       dt = datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
                       return dt
@@ -239,6 +240,30 @@ jobs:
               # as visible text rather than metadata.
               if not published:
                   page_text = clean(soup.get_text(" ", strip=True))
+
+                  numeric_date = re.search(
+                      r"\b(\d{1,2})[./-](\d{1,2})[./-](202\d|19\d\d)\b",
+                      page_text
+                  )
+                  if numeric_date:
+                      date_text = f"{numeric_date.group(1)}/{numeric_date.group(2)}/{numeric_date.group(3)}"
+                      for date_fmt in ("%d/%m/%Y", "%d/%m/%y"):
+                          try:
+                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                              break
+                          except Exception:
+                              continue
+
+                  relative = re.search(
+                      r"\b(?:about\s+)?(\d+)\s*(hour|hours|day|days)\s+ago\b",
+                      page_text,
+                      re.I
+                  )
+                  if not published and relative:
+                      amount = int(relative.group(1))
+                      unit = relative.group(2).lower()
+                      delta = timedelta(hours=amount) if unit.startswith("hour") else timedelta(days=amount)
+                      published = now - delta
                   date_match = re.search(
                       r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+(\d{1,2})\s+"
                       r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
@@ -483,7 +508,7 @@ jobs:
                       continue
                   if parsed.path.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".pdf", ".mp4")):
                       continue
-                  if href.rstrip("/") == index_url.rstrip("/"):
+                  if parsed.netloc == base.netloc and parsed.path.rstrip("/") == base.path.rstrip("/"):
                       continue
 
                   canonical = href.split("#", 1)[0].rstrip("/")
@@ -494,6 +519,7 @@ jobs:
                           "/league-tables", "/match-day-guide", "/beckenham-match-day-guide",
                           "/guildford-match-day-guide", "/tickets", "/hospitality", "/events/",
                           "/landing", "/videos", "/home", "/contact", "/privacy", "/terms",
+                          "/food-drink", "/our-squad",
                           "/sustainability", "/foundation", "/shop", "/teams", "/club", "/matches"
                       )
                       if any(parsed.path.lower().startswith(prefix) for prefix in blocked_prefixes):
@@ -580,6 +606,8 @@ jobs:
               print("Webhook secret(s) not configured yet; those counties will be skipped: " + ", ".join(missing))
 
           now = datetime.now(timezone.utc)
+          manual_run = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+          county_diag = {}
 
           # Manual and scheduled runs use the same lookback window so testing
           # behaves exactly like the daily collector.
@@ -590,6 +618,13 @@ jobs:
           checked_links = set()
 
           for county, index_url, pattern, webhook_key in COUNTIES:
+              county_diag[county] = {
+                  "candidate_links": 0,
+                  "metadata_failures": 0,
+                  "index_failed": False,
+                  "fallback_candidates": 0
+              }
+
               if not webhooks.get(webhook_key):
                   print(f"{county}: skipped - {webhook_key} is not configured yet.")
                   continue
@@ -597,8 +632,11 @@ jobs:
               try:
                   links = candidate_links(index_url, pattern, county)
               except urllib.error.HTTPError as e:
+                  county_diag[county]["index_failed"] = True
                   print(f"{county}: index failed with HTTP {e.code}; trying official-site Google News fallback.")
-                  for fallback_story in google_news_official_fallback(county, index_url):
+                  fallback_stories = google_news_official_fallback(county, index_url)
+                  county_diag[county]["fallback_candidates"] = len(fallback_stories)
+                  for fallback_story in fallback_stories:
                       link = fallback_story["link"]
                       if link in seen:
                           continue
@@ -614,10 +652,12 @@ jobs:
                       })
                   continue
               except Exception as e:
+                  county_diag[county]["index_failed"] = True
                   print(f"{county}: index failed: {e}")
                   continue
 
               print(f"{county}: found {len(links)} candidate links.")
+              county_diag[county]["candidate_links"] = len(links)
               county_found_before = len(found)
 
               for link in links:
@@ -648,6 +688,7 @@ jobs:
                               published = None
 
                   if not title or not published:
+                      county_diag[county]["metadata_failures"] += 1
                       print(f"{county}: skipped {link} - title/date missing (title={bool(title)}, published={published})")
                       continue
                   if published < cutoff or published > now + timedelta(minutes=10):
@@ -715,6 +756,64 @@ jobs:
               for item in per_county[webhook_key][:3]
           ]
 
+          def manual_diagnostic(county):
+              info = county_diag.get(county, {})
+              if info.get("index_failed"):
+                  if info.get("fallback_candidates"):
+                      return (
+                          f"🔎 **Manual diagnostic**\n"
+                          f"{info['fallback_candidates']} fallback article(s) were found, "
+                          f"but none were new qualifying stories."
+                      )
+                  return (
+                      "🔎 **Manual diagnostic**\n"
+                      "The county news source could not be checked successfully, "
+                      "so this is not being treated as confirmation that there are no new stories."
+                  )
+
+              candidates = info.get("candidate_links", 0)
+              failures = info.get("metadata_failures", 0)
+              if candidates == 0:
+                  return (
+                      "🔎 **Manual diagnostic**\n"
+                      "The news page returned no candidate article links."
+                  )
+              if failures:
+                  return (
+                      f"🔎 **Manual diagnostic**\n"
+                      f"{candidates} candidate article(s) were found, but {failures} "
+                      f"could not be dated correctly. No new qualifying story was posted."
+                  )
+              return (
+                  "🔎 **Manual diagnostic**\n"
+                  f"{candidates} candidate article(s) were checked. "
+                  "No new qualifying stories were found in the last 26 hours."
+              )
+
+          def send_manual_no_story_messages():
+              for county, _, _, webhook_key in COUNTIES:
+                  if not webhooks.get(webhook_key):
+                      continue
+                  if manual_run:
+                      message = (
+                          f"🏏 **{county} County Watch - {now.strftime('%d %B %Y')}**\n"
+                          f"*{manual_diagnostic(county)}*"
+                      )
+                      request = urllib.request.Request(
+                          webhooks[webhook_key],
+                          data=json.dumps({"content": message, "flags": 4}).encode("utf-8"),
+                          headers={
+                              "Content-Type": "application/json",
+                              "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
+                          },
+                          method="POST"
+                      )
+                      try:
+                          with urllib.request.urlopen(request, timeout=15) as response:
+                              print(f"{county} manual diagnostic response: {response.status}")
+                      except Exception as e:
+                          print(f"{county} manual diagnostic failed: {e}")
+
           if not found:
               # No Discord delivery is needed, so it is safe to persist the
               # links we checked and filtered out.
@@ -727,6 +826,9 @@ jobs:
 
               with open(STATE_PATH, "w", encoding="utf-8") as f:
                   json.dump(seen, f, indent=2)
+
+              if manual_run:
+                  send_manual_no_story_messages()
 
               print("No new qualifying county stories found.")
               raise SystemExit(0)
@@ -807,6 +909,9 @@ jobs:
                   error = f"{county} Discord webhook failed: {e}"
                   print(error)
                   delivery_errors.append(error)
+
+          if manual_run:
+              send_manual_no_story_messages()
 
           # Only mark stories as seen after their county's Discord delivery succeeds.
           for link in delivered_links:
