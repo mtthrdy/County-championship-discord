@@ -328,6 +328,18 @@ jobs:
                           if published:
                               break
 
+              # Some modern club pages keep publication metadata in
+              # generic application scripts rather than JSON-LD. Inspect raw
+              # HTML for an explicit datePublished field before giving up.
+              if not published:
+                  raw_date = re.search(
+                      r"datePublished[^A-Za-z0-9]{0,20}([\"'])(20\d{2}-\d{2}-\d{2}T[^\"']+)\1",
+                      html,
+                      re.I
+                  )
+                  if raw_date:
+                      published = parse_date(raw_date.group(2))
+
               return title, description, published
 
           def espncricinfo_fallback(county):
@@ -505,6 +517,8 @@ jobs:
               print(f"{county}: official-site Google News fallback found {len(result)} candidate stories.")
               return result
 
+          index_date_by_url = {}
+
           def candidate_links(index_url, pattern, county_context=None):
               html = fetch(index_url).decode("utf-8", errors="replace")
               soup = BeautifulSoup(html, "html.parser")
@@ -548,6 +562,30 @@ jobs:
 
                   canonical = href.split("#", 1)[0].rstrip("/")
                   path_lower = parsed.path.lower()
+
+                  if county_context == "Lancashire":
+                      # Lancashire's article pages do not expose a usable publication
+                      # date in the HTML, but the 2026 news index places each article
+                      # alongside its publication date. Capture that date while we
+                      # still have the index page in hand.
+                      node = a
+                      for _ in range(5):
+                          if not node:
+                              break
+                          context_text = clean(node.parent.get_text(" ", strip=True)) if node.parent else ""
+                          date_match = re.search(
+                              r"\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b",
+                              context_text,
+                              re.I
+                          )
+                          if date_match:
+                              parsed_index_date = parse_date(
+                                  f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}"
+                              )
+                              if parsed_index_date:
+                                  index_date_by_url[canonical] = parsed_index_date
+                                  break
+                          node = node.parent
 
                   # Generic site-navigation exclusions that should never be
                   # mistaken for a county news article.
@@ -763,7 +801,42 @@ jobs:
                       print(f"{county}: article failed {link}: {e}")
                       continue
 
-                  if not title or not published:
+                  if not published and county == "Lancashire":
+                      published = index_date_by_url.get(link)
+
+                  if not published and county == "Middlesex":
+                      # Middlesex article pages commonly show dates as
+                      # "Thu 24 September" without the year. The URL carries the
+                      # authoritative article year/month.
+                      path_parts = urllib.parse.urlparse(link).path.split("/")
+                      try:
+                          url_year = int(path_parts[2])
+                          url_month = int(path_parts[3])
+                      except Exception:
+                          url_year = None
+                          url_month = None
+
+                      if url_year and url_month:
+                          page_text = clean((BeautifulSoup(html, "html.parser").find("main") or BeautifulSoup(html, "html.parser")).get_text(" ", strip=True))
+                          month_name = datetime(url_year, url_month, 1).strftime("%B")
+                          month_abbr = datetime(url_year, url_month, 1).strftime("%b")
+                          day_match = re.search(
+                              rf"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+(\d{{1,2}})\s+({month_name}|{month_abbr})\b",
+                              page_text,
+                              re.I
+                          )
+                          if day_match:
+                              try:
+                                  published = datetime(
+                                      url_year,
+                                      url_month,
+                                      int(day_match.group(1)),
+                                      tzinfo=timezone.utc
+                                  )
+                              except Exception:
+                                  pass
+
+                  if not published:
                       # A reachable article with an unparseable publication date is
                       # not necessarily invalid; use a conservative fallback based
                       # on the URL for date-based county sites.
@@ -776,6 +849,15 @@ jobs:
                               published = datetime(year, month, day, tzinfo=timezone.utc)
                           except Exception:
                               published = None
+
+                  if county == "Warwickshire" and not published:
+                      raw_date = re.search(
+                          r"datePublished[^A-Za-z0-9]{0,20}(["'])(20\d{2}-\d{2}-\d{2}T[^"']+)\1",
+                          html,
+                          re.I
+                      )
+                      if raw_date:
+                          published = parse_date(raw_date.group(2))
 
                   if not title or not published:
                       county_diag[county]["metadata_failures"] += 1
