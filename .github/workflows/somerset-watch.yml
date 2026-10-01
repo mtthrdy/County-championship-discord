@@ -404,7 +404,7 @@ jobs:
                   print(f"{county}: official-site Google News fallback failed: {e}")
                   return stories
 
-              for item in root.findall(".//item"):
+              for item in root.findall(".//item")[:5]:
                   title = clean(item.findtext("title", ""))
                   link = clean(item.findtext("link", ""))
                   description = clean(BeautifulSoup(
