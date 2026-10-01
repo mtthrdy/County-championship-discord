@@ -64,8 +64,7 @@ jobs:
 
           from bs4 import BeautifulSoup
 
-          COUNTIES = [
-              # Launching with Somerset first.
+          ALL_COUNTIES = [
               ("Somerset", "https://somersetcountycc.co.uk/news/", r"/news/", "SOMERSET_WEBHOOK_URL"),
               ("Derbyshire", "https://derbyshireccc.com/news/", r"/\d{4}/\d{2}/", "DERBYSHIRE_WEBHOOK_URL"),
               ("Durham", "https://www.durhamcricket.co.uk/news-and-media/", r"/news-and-media/(?!news/?$|match-reports/?$|match-previews/?$|international/?$|video/?$|t20-blast/?$|interviews/?$|features/?$|foundation/?$|events/?$|partners-news/?$|recreational/?$|women/?$|representative/?$)[^/]+/?$", "DURHAM_WEBHOOK_URL"),
@@ -84,6 +83,20 @@ jobs:
               ("Nottinghamshire", "https://www.trentbridge.co.uk/news/", r"/news/\d{4}/[^/]+/[^/]+\.html$", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
               ("Surrey", "https://www.kiaoval.com/latest-news/", r"/[^/]+/?$", "SURREY_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/.+", "GLAMORGAN_WEBHOOK_URL")
+          ]
+
+          # Only run counties whose website source is still being debugged.
+          # Keep the full configuration above so solved counties can be re-enabled
+          # by adding their names here rather than rebuilding their entries.
+          ACTIVE_COUNTIES = {
+              "Gloucestershire",
+              "Middlesex",
+              "Warwickshire",
+              "Hampshire",
+              "Lancashire",
+              "Glamorgan",
+          }
+          COUNTIES = [county for county in ALL_COUNTIES if county[0] in ACTIVE_COUNTIES]
           ]
 
           # The bot is intended for county men's cricket and significant club news.
@@ -398,7 +411,6 @@ jobs:
                       continue
                   if any(term in text for term in EXCLUDE_TERMS):
                       continue
-
                   if not pub_date:
                       continue
                   if pub_date < cutoff or pub_date > now + timedelta(minutes=10):
@@ -797,8 +809,7 @@ jobs:
                       county_diag[county]["article_checked"] += 1
                       title, description, published = article_metadata(link, html)
                   except Exception as e:
-                      county_diag[county]["fetch_failures"] += 1
-                      print(f"{county}: article failed {link}: {e}")
+                      county_diag[county]["fetch_failures"] += 1                      print(f"{county}: article failed {link}: {e}")
                       continue
 
                   if not published and county == "Lancashire":
