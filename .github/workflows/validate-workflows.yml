@@ -1,0 +1,57 @@
+name: Validate Workflows
+
+on:
+  push:
+    paths:
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install YAML parser
+        run: python -m pip install --disable-pip-version-check pyyaml
+
+      - name: Validate workflow YAML and embedded Python
+        run: |
+          python3 - <<'PY'
+          import ast
+          import pathlib
+          import re
+          import textwrap
+
+          import yaml
+
+          workflow_dir = pathlib.Path(".github/workflows")
+
+          for path in sorted(workflow_dir.glob("*.yml")):
+              raw = path.read_text(encoding="utf-8")
+
+              # First make sure the workflow itself is valid YAML.
+              yaml.safe_load(raw)
+              print(f"{path}: YAML OK")
+
+              # The County Website Watch workflow contains a large Python heredoc.
+              # Parse every Python heredoc in every workflow so syntax errors are
+              # caught automatically before a manual test run is needed.
+              blocks = re.findall(
+                  r"python3 - <<'PY'\n(.*?)\n\s*PY(?:\n|$)",
+                  raw,
+                  re.DOTALL
+              )
+
+              for number, block in enumerate(blocks, start=1):
+                  script = textwrap.dedent(block)
+                  ast.parse(script, filename=f"{path} Python block {number}")
+                  print(f"{path}: embedded Python block {number} OK")
+
+          print("All workflow YAML and embedded Python validated successfully.")
+          PY
