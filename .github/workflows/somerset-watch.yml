@@ -147,6 +147,7 @@ jobs:
 
               # Some county sites expose dates as human-readable text,
               # e.g. "24 September 26".
+              value = re.sub(r"^(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)\s+", "", value, flags=re.I)
               value = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", value, flags=re.I)
               for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y"):
                   try:
@@ -271,6 +272,24 @@ jobs:
                       )
                   if month_first:
                       date_text = f"{month_first.group(2)} {month_first.group(1)} {month_first.group(3)}"
+                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
+                          try:
+                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                              break
+                          except Exception:
+                              continue
+
+              if not published:
+                  page_text = clean(soup.get_text(" ", strip=True))
+                  day_first = re.search(
+                      r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
+                      r"(January|February|March|April|May|June|July|August|September|October|November|December|"
+                      r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b",
+                      page_text,
+                      re.I
+                  )
+                  if day_first:
+                      date_text = f"{day_first.group(1)} {day_first.group(2)} {day_first.group(3)}"
                       for date_fmt in ("%d %B %Y", "%d %b %Y"):
                           try:
                               published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
