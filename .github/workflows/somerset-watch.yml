@@ -17,6 +17,7 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
 
     steps:
       - name: Check out repository
@@ -79,7 +80,7 @@ jobs:
               ("Warwickshire", "https://www.edgbaston.com/news", r"/[^/]+/?$", "WARWICKSHIRE_WEBHOOK_URL"),
               ("Hampshire", "https://www.ageasbowl.com/cricket/news/", r"/cricket/news/[^/]+/?$", "HAMPSHIRE_WEBHOOK_URL"),
               ("Kent", "https://www.kentcricket.co.uk/news/", r"/news/[^/]+/?$", "KENT_WEBHOOK_URL"),
-              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/\\d{4}-news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
+              ("Lancashire", "https://cricket.lancashirecricket.co.uk/news/", r"/news/\d{4}-news/[^/]+/?$", "LANCASHIRE_WEBHOOK_URL"),
               ("Nottinghamshire", "https://www.trentbridge.co.uk/news/", r"/news/\d{4}/[^/]+/[^/]+\.html$", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
               ("Surrey", "https://www.kiaoval.com/latest-news/", r"/[^/]+/?$", "SURREY_WEBHOOK_URL"),
               ("Glamorgan", "https://www.glamorgancricket.com/news/", r"/news/[^/]+/?$", "GLAMORGAN_WEBHOOK_URL")
@@ -112,14 +113,14 @@ jobs:
           except Exception:
               seen = {}
 
-          def fetch(url):
+          def fetch(url, timeout=12):
               request = urllib.request.Request(
                   url,
                   headers={
                       "User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"
                   }
               )
-              with urllib.request.urlopen(request, timeout=20) as response:
+              with urllib.request.urlopen(request, timeout=timeout) as response:
                   return response.read()
 
           def clean(text):
@@ -146,7 +147,8 @@ jobs:
 
               # Some county sites expose dates as human-readable text,
               # e.g. "24 September 26".
-              for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y"):
+              value = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", value, flags=re.I)
+              for fmt in ("%d %B %y", "%d %B %Y", "%d %b %y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y"):
                   try:
                       dt = datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
                       return dt
@@ -237,14 +239,38 @@ jobs:
               if not published:
                   page_text = clean(soup.get_text(" ", strip=True))
                   date_match = re.search(
-                      r"\\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\\s+(\\d{1,2})\\s+"
+                      r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\\s+(\\d{1,2})\\s+"
                       r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-                      r"\\s+(\\d{4})\\b",
+                      r"\s+(\\d{4})\\b",
                       page_text,
                       re.I
                   )
                   if date_match:
                       date_text = f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)}"
+                      for date_fmt in ("%d %B %Y", "%d %b %Y"):
+                          try:
+                              published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
+                              break
+                          except Exception:
+                              continue
+
+              if not published:
+                  page_text = clean(soup.get_text(" ", strip=True))
+                  month_first = re.search(
+                      r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+"
+                      r"(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\b",
+                      page_text,
+                      re.I
+                  )
+                  if not month_first:
+                      month_first = re.search(
+                          r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+                          r"(\d{1,2})(?:st|nd|rd|th)?,\s+(\d{4})\b",
+                          page_text,
+                          re.I
+                      )
+                  if month_first:
+                      date_text = f"{month_first.group(2)} {month_first.group(1)} {month_first.group(3)}"
                       for date_fmt in ("%d %B %Y", "%d %b %Y"):
                           try:
                               published = datetime.strptime(date_text, date_fmt).replace(tzinfo=timezone.utc)
@@ -342,6 +368,81 @@ jobs:
               print(f"{county}: ESPNcricinfo fallback found {len(result)} candidate stories.")
               return result
 
+          def google_news_official_fallback(county, index_url):
+              domain = urllib.parse.urlparse(index_url).netloc.lower().removeprefix("www.")
+              query = f'site:{domain} "{county}" cricket'
+              rss_url = (
+                  "https://news.google.com/rss/search?q="
+                  + urllib.parse.quote(query)
+                  + "&hl=en-GB&gl=GB&ceid=GB:en"
+              )
+
+              stories = []
+              try:
+                  xml = fetch(rss_url, timeout=10).decode("utf-8", errors="replace")
+                  root = ET.fromstring(xml)
+              except Exception as e:
+                  print(f"{county}: official-site Google News fallback failed: {e}")
+                  return stories
+
+              for item in root.findall(".//item"):
+                  title = clean(item.findtext("title", ""))
+                  link = clean(item.findtext("link", ""))
+                  description = clean(BeautifulSoup(
+                      item.findtext("description", ""), "html.parser"
+                  ).get_text(" ", strip=True))
+                  published = parse_date(item.findtext("pubDate", ""))
+                  source = item.find("source")
+                  source_url = clean(source.get("url", "") if source is not None else "").lower()
+
+                  if not title or not link or not published:
+                      continue
+                  if published < cutoff or published > now + timedelta(minutes=10):
+                      continue
+
+                  resolved = link
+                  try:
+                      request = urllib.request.Request(
+                          link,
+                          headers={"User-Agent": "Mozilla/5.0 (County Championship Discord Bot)"}
+                      )
+                      with urllib.request.urlopen(request, timeout=8) as response:
+                          resolved = response.geturl().split("#", 1)[0]
+                  except Exception:
+                      pass
+
+                  resolved_host = urllib.parse.urlparse(resolved).netloc.lower().removeprefix("www.")
+                  if domain not in resolved_host and domain not in source_url:
+                      continue
+
+                  text = f"{title} {description}".lower()
+                  if any(term in text for term in EXCLUDE_TERMS):
+                      continue
+
+                  score = sum(1 for term in IMPORTANT_TERMS if term in text)
+                  if score == 0:
+                      continue
+
+                  stories.append({
+                      "county": county,
+                      "title": title,
+                      "description": description,
+                      "link": resolved,
+                      "published": published,
+                      "score": score
+                  })
+
+              unique = {}
+              for story in stories:
+                  unique[story["link"]] = story
+              result = sorted(
+                  unique.values(),
+                  key=lambda x: (x["score"], x["published"]),
+                  reverse=True
+              )[:3]
+              print(f"{county}: official-site Google News fallback found {len(result)} candidate stories.")
+              return result
+
           def candidate_links(index_url, pattern, county_context=None):
               html = fetch(index_url).decode("utf-8", errors="replace")
               soup = BeautifulSoup(html, "html.parser")
@@ -362,6 +463,17 @@ jobs:
                       continue
 
                   canonical = href.split("#", 1)[0].rstrip("/")
+
+                  if county_context in ("Warwickshire", "Surrey"):
+                      blocked_prefixes = (
+                          "/latest-news", "/membership", "/newsletter", "/fixtures", "/results",
+                          "/league-tables", "/match-day-guide", "/beckenham-match-day-guide",
+                          "/guildford-match-day-guide", "/tickets", "/hospitality", "/events/",
+                          "/landing", "/videos", "/home", "/contact", "/privacy", "/terms",
+                          "/sustainability", "/foundation", "/shop", "/teams", "/club", "/matches"
+                      )
+                      if any(parsed.path.lower().startswith(prefix) for prefix in blocked_prefixes):
+                          continue
 
                   # Ageas Bowl's cricket/news index contains several venue/service
                   # pages alongside actual cricket stories. Avoid fetching those.
@@ -461,32 +573,28 @@ jobs:
               try:
                   links = candidate_links(index_url, pattern, county)
               except urllib.error.HTTPError as e:
-                  if e.code == 403 and county in ("Glamorgan", "Gloucestershire"):
-                      print(f"{county}: official site returned HTTP 403; using ESPNcricinfo fallback.")
-                      for fallback_story in espncricinfo_fallback(county):
-                          link = fallback_story["link"]
-                          if link in seen:
-                              continue
-
-                          checked_links.add(link)
-                          found.append({
-                              "county": county,
-                              "webhook_key": webhook_key,
-                              "title": fallback_story["title"],
-                              "description": fallback_story["description"],
-                              "link": link,
-                              "published": fallback_story["published"].isoformat(),
-                              "score": fallback_story["score"]
-                          })
-                      continue
-
-                  print(f"{county}: index failed: {e}")
+                  print(f"{county}: index failed with HTTP {e.code}; trying official-site Google News fallback.")
+                  for fallback_story in google_news_official_fallback(county, index_url):
+                      link = fallback_story["link"]
+                      if link in seen:
+                          continue
+                      checked_links.add(link)
+                      found.append({
+                          "county": county,
+                          "webhook_key": webhook_key,
+                          "title": fallback_story["title"],
+                          "description": fallback_story["description"],
+                          "link": link,
+                          "published": fallback_story["published"].isoformat(),
+                          "score": fallback_story["score"]
+                      })
                   continue
               except Exception as e:
                   print(f"{county}: index failed: {e}")
                   continue
 
               print(f"{county}: found {len(links)} candidate links.")
+              county_found_before = len(found)
 
               for link in links:
                   # During manual testing, allow Essex to re-evaluate recent
@@ -530,6 +638,22 @@ jobs:
                       "score": score
                   })
 
+              if len(found) == county_found_before:
+                  for fallback_story in google_news_official_fallback(county, index_url):
+                      link = fallback_story["link"]
+                      if link in seen:
+                          continue
+                      checked_links.add(link)
+                      found.append({
+                          "county": county,
+                          "webhook_key": webhook_key,
+                          "title": fallback_story["title"],
+                          "description": fallback_story["description"],
+                          "link": link,
+                          "published": fallback_story["published"].isoformat(),
+                          "score": fallback_story["score"]
+                      })
+
           # Deduplicate and keep the strongest items first.
           unique = {}
           for item in found:
@@ -544,7 +668,14 @@ jobs:
           # Do not write seen-state yet. A story should only become
           # "seen" after Discord has accepted the message successfully.
 
-          found = found[:10]
+          per_county = {}
+          for item in found:
+              per_county.setdefault(item["webhook_key"], []).append(item)
+          found = [
+              item
+              for webhook_key in per_county
+              for item in per_county[webhook_key][:3]
+          ]
 
           if not found:
               # No Discord delivery is needed, so it is safe to persist the
@@ -565,20 +696,21 @@ jobs:
           def story_emoji(item):
               text = (item["title"] + " " + item["description"]).lower()
 
-              if re.search(r"\\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
+              if re.search(r"\bchampions?|title|promot(?:ed|ion)|relegat(?:ed|ion)\\b", text):
                   return "🏆"
-              if re.search(r"\\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
+              if re.search(r"\bhat[- ]trick|five[- ]for|wicket haul\\b", text):
                   return "🎯"
-              if re.search(r"\\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
+              if re.search(r"\b\\d{3}\\b|\\bcentur(?:y|ies)\\b|double hundred", text):
                   return "💯"
-              if re.search(r"\\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day\\b", text):
+              if re.search(r"\bone[- ]wicket|thriller|dramatic|last[- ]wicket|final[- ]day\\b", text):
                   return "🔥"
-              if re.search(r"\\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
+              if re.search(r"\bwin(?:s|ning)?|victory|defeat|beaten\\b", text):
                   return "🏏"
               return "📰"
 
           # Deliver one bulletin per county, to that county's webhook.
           delivered_links = set()
+          delivery_errors = []
 
           for county, _, _, webhook_key in COUNTIES:
               county_items = [item for item in found if item["webhook_key"] == webhook_key]
@@ -629,8 +761,13 @@ jobs:
                       delivered_links.update(item["link"] for item in county_items)
               except urllib.error.HTTPError as e:
                   body = e.read().decode("utf-8", errors="replace")
-                  print(f"{county} Discord webhook HTTP {e.code}: {body}")
-                  raise
+                  error = f"{county} Discord webhook HTTP {e.code}: {body}"
+                  print(error)
+                  delivery_errors.append(error)
+              except Exception as e:
+                  error = f"{county} Discord webhook failed: {e}"
+                  print(error)
+                  delivery_errors.append(error)
 
           # Only mark stories as seen after their county's Discord delivery succeeds.
           for link in delivered_links:
@@ -642,6 +779,9 @@ jobs:
 
           with open(STATE_PATH, "w", encoding="utf-8") as f:
               json.dump(seen, f, indent=2)
+
+          if delivery_errors:
+              raise SystemExit("One or more county Discord deliveries failed.")
           PY
 
       - name: Save seen-state
