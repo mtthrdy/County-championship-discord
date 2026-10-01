@@ -112,7 +112,9 @@ jobs:
               "signs", "contract", "extend", "extension", "leave", "leaves",
               "retire", "retirement", "injury", "squad", "match report",
               "match preview", "century", "five-for", "six-for", "wicket",
-              "victory", "win", "defeat", "champions", "promotion", "relegation"
+              "victory", "win", "defeat", "champions", "promotion", "relegation",
+              "chair", "chairman", "director", "ceo", "chief executive",
+              "appointed", "appointment", "resign", "resignation", "step down"
           ]
 
           STATE_PATH = "data/county-watch-seen.json"
