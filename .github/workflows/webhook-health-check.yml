@@ -1,0 +1,96 @@
+name: County Discord Webhook Health Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check all Discord webhooks
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GAMEWEEK_THREADS_WEBHOOK_URL: ${{ secrets.GAMEWEEK_THREADS_WEBHOOK_URL }}
+          SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
+          DERBYSHIRE_WEBHOOK_URL: ${{ secrets.DERBYSHIRE_WEBHOOK_URL }}
+          DURHAM_WEBHOOK_URL: ${{ secrets.DURHAM_WEBHOOK_URL }}
+          ESSEX_WEBHOOK_URL: ${{ secrets.ESSEX_WEBHOOK_URL }}
+          GLAMORGAN_WEBHOOK_URL: ${{ secrets.GLAMORGAN_WEBHOOK_URL }}
+          GLOUCESTERSHIRE_WEBHOOK_URL: ${{ secrets.GLOUCESTERSHIRE_WEBHOOK_URL }}
+          HAMPSHIRE_WEBHOOK_URL: ${{ secrets.HAMPSHIRE_WEBHOOK_URL }}
+          KENT_WEBHOOK_URL: ${{ secrets.KENT_WEBHOOK_URL }}
+          LANCASHIRE_WEBHOOK_URL: ${{ secrets.LANCASHIRE_WEBHOOK_URL }}
+          LEICESTERSHIRE_WEBHOOK_URL: ${{ secrets.LEICESTERSHIRE_WEBHOOK_URL }}
+          MIDDLESEX_WEBHOOK_URL: ${{ secrets.MIDDLESEX_WEBHOOK_URL }}
+          NORTHAMPTONSHIRE_WEBHOOK_URL: ${{ secrets.NORTHAMPTONSHIRE_WEBHOOK_URL }}
+          NOTTINGHAMSHIRE_WEBHOOK_URL: ${{ secrets.NOTTINGHAMSHIRE_WEBHOOK_URL }}
+          SURREY_WEBHOOK_URL: ${{ secrets.SURREY_WEBHOOK_URL }}
+          SUSSEX_WEBHOOK_URL: ${{ secrets.SUSSEX_WEBHOOK_URL }}
+          WARWICKSHIRE_WEBHOOK_URL: ${{ secrets.WARWICKSHIRE_WEBHOOK_URL }}
+          WORCESTERSHIRE_WEBHOOK_URL: ${{ secrets.WORCESTERSHIRE_WEBHOOK_URL }}
+          YORKSHIRE_WEBHOOK_URL: ${{ secrets.YORKSHIRE_WEBHOOK_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.request
+
+          hooks = [
+              ("National Round-up", "DISCORD_WEBHOOK_URL"),
+              ("Gameweek Guide", "GAMEWEEK_THREADS_WEBHOOK_URL"),
+              ("Somerset", "SOMERSET_WEBHOOK_URL"),
+              ("Derbyshire", "DERBYSHIRE_WEBHOOK_URL"),
+              ("Durham", "DURHAM_WEBHOOK_URL"),
+              ("Essex", "ESSEX_WEBHOOK_URL"),
+              ("Glamorgan", "GLAMORGAN_WEBHOOK_URL"),
+              ("Gloucestershire", "GLOUCESTERSHIRE_WEBHOOK_URL"),
+              ("Hampshire", "HAMPSHIRE_WEBHOOK_URL"),
+              ("Kent", "KENT_WEBHOOK_URL"),
+              ("Lancashire", "LANCASHIRE_WEBHOOK_URL"),
+              ("Leicestershire", "LEICESTERSHIRE_WEBHOOK_URL"),
+              ("Middlesex", "MIDDLESEX_WEBHOOK_URL"),
+              ("Northamptonshire", "NORTHAMPTONSHIRE_WEBHOOK_URL"),
+              ("Nottinghamshire", "NOTTINGHAMSHIRE_WEBHOOK_URL"),
+              ("Surrey", "SURREY_WEBHOOK_URL"),
+              ("Sussex", "SUSSEX_WEBHOOK_URL"),
+              ("Warwickshire", "WARWICKSHIRE_WEBHOOK_URL"),
+              ("Worcestershire", "WORCESTERSHIRE_WEBHOOK_URL"),
+              ("Yorkshire", "YORKSHIRE_WEBHOOK_URL"),
+          ]
+
+          failures = []
+
+          for name, env_name in hooks:
+              url = os.environ.get(env_name, "").strip()
+
+              if not url:
+                  print(f"FAIL  {name}: secret {env_name} is missing")
+                  failures.append(name)
+                  continue
+
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "County Championship Discord Bot"},
+                  method="GET",
+              )
+
+              try:
+                  with urllib.request.urlopen(request, timeout=10) as response:
+                      status = response.status
+                      print(f"{'PASS' if status == 200 else 'FAIL'}  {name}: HTTP {status}")
+                      if status != 200:
+                          failures.append(name)
+              except urllib.error.HTTPError as exc:
+                  print(f"FAIL  {name}: HTTP {exc.code}")
+                  failures.append(name)
+              except Exception as exc:
+                  print(f"FAIL  {name}: {exc.__class__.__name__}")
+                  failures.append(name)
+
+          if failures:
+              raise SystemExit("Webhook health check failed for: " + ", ".join(failures))
+
+          print(f"PASS  All {len(hooks)} Discord webhooks responded successfully.")
+          PY
