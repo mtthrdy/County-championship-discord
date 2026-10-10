@@ -523,8 +523,8 @@ jobs:
               seen_links = set()
 
               # Google News RSS is the reliable source here. Bing News RSS has been returning
-# malformed XML from the runner, so do not let it create noisy parser errors.
-for engine in ("google",):
+              # malformed XML from the runner, so do not let it create noisy parser errors.
+              for engine in ("google",):
                   for query in queries:
                       root = search_news_rss(engine, query)
                       if root is None:
