@@ -513,10 +513,18 @@ jobs:
               domain = urllib.parse.urlparse(index_url).netloc.lower().removeprefix("www.")
 
               queries = [
+                  # Keep strict recent searches first, but don't rely on Google News
+                  # understanding every county's site/domain query consistently.
                   f'site:{domain} cricket when:2d',
                   f'site:{domain} "{county}" cricket when:2d',
-                  f'site:{domain} "County Championship" when:2d',
-                  f'site:{domain} 2026 cricket when:2d',
+                  f'"{county}" cricket when:2d',
+                  f'"{county} Cricket Club" when:2d',
+                  # Broader queries may surface older items; the publication-date
+                  # cutoff below remains the final gate.
+                  f'site:{domain} cricket',
+                  f'site:{domain} "{county}"',
+                  f'"{county}" cricket',
+                  f'"{county} Cricket Club"',
               ]
 
               stats = {
