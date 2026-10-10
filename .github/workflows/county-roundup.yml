@@ -23,6 +23,7 @@ jobs:
       - name: Fetch and format cricket news
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MODERATOR_ONLY_WEBHOOK_URL: ${{ secrets.MODERATOR_ONLY_WEBHOOK_URL }}
         run: |
           python3 - <<'PY'
           import urllib.request
@@ -332,17 +333,24 @@ jobs:
 
           articles = selected_articles
 
-          if not articles:
-              lines.append("No new County Championship stories were found in the last 24 hours.")
+          has_stories = bool(articles)
 
-          message = "\n".join(lines)
-
-          with open("discord-message.json", "w") as f:
-              json.dump({
-                  "content": message,
-                  # Discord flag 4 suppresses automatic link preview embeds.
-                  "flags": 4
-              }, f)
+          if not has_stories:
+              message = (
+                  f"ℹ️ **County Championship Round-up - {date_label}: no stories found**\n"
+                  "No qualifying County Championship stories were found in the past 24 hours. "
+                  "The main roundup channel was left untouched."
+              )
+              with open("moderator-message.json", "w", encoding="utf-8") as f:
+                  json.dump({"content": message, "flags": 4}, f)
+              with open("roundup-has-stories.txt", "w", encoding="utf-8") as f:
+                  f.write("false")
+          else:
+              message = "\n".join(lines)
+              with open("discord-message.json", "w", encoding="utf-8") as f:
+                  json.dump({"content": message, "flags": 4}, f)
+              with open("roundup-has-stories.txt", "w", encoding="utf-8") as f:
+                  f.write("true")
 
           print(message)
 
@@ -355,15 +363,27 @@ jobs:
               json.dump({"sent_at": now.isoformat(), "links": pending_links}, f, indent=2)
           PY
 
-          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK_URL is not configured."
-            exit 1
+          if [ "$(cat roundup-has-stories.txt)" = "false" ]; then
+            if [ -z "$MODERATOR_ONLY_WEBHOOK_URL" ]; then
+              echo "MODERATOR_ONLY_WEBHOOK_URL is not configured; refusing to post an empty roundup to the main channel."
+              exit 1
+            fi
+            echo "No qualifying stories: sending notification to moderator-only channel."
+            curl --fail --silent --show-error --retry 2 --retry-delay 2 -X POST \
+              -H "Content-Type: application/json" \
+              --data @moderator-message.json \
+              "$MODERATOR_ONLY_WEBHOOK_URL"
+          else
+            if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+              echo "DISCORD_WEBHOOK_URL is not configured."
+              exit 1
+            fi
+            echo "Qualifying stories found: sending roundup to main channel."
+            curl --fail --silent --show-error --retry 2 --retry-delay 2 -X POST \
+              -H "Content-Type: application/json" \
+              --data @discord-message.json \
+              "$DISCORD_WEBHOOK_URL"
           fi
-
-          curl --fail --silent --show-error --retry 2 --retry-delay 2 -X POST \
-            -H "Content-Type: application/json" \
-            --data @discord-message.json \
-            "$DISCORD_WEBHOOK_URL"
 
       - name: Mark delivered stories as seen
         run: |
