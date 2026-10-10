@@ -504,21 +504,28 @@ jobs:
                   print(f"{engine} news search failed for '{query}': {e}")
                   return None
 
+          fallback_search_status = {}
+
           def google_news_official_fallback(county, index_url):
               # Used when an official county index is blocked (or produces no
-              # qualifying stories). Search engines can still discover the public
-              # article pages, and individual article pages are fetched directly
-              # where possible so their own publication date wins over RSS time.
+              # qualifying stories). Restrict discovery to recent search results;
+              # otherwise the first results may be old articles that fail cutoff.
               domain = urllib.parse.urlparse(index_url).netloc.lower().removeprefix("www.")
 
               queries = [
-                  f'site:{domain}/cricket/news/ cricket',
-                  f'site:{domain} "{county}" cricket',
-                  f'site:{domain} "{county}"',
-                  f'site:{domain} "County Championship"',
-                  f'site:{domain} 2026 cricket',
+                  f'site:{domain} cricket when:2d',
+                  f'site:{domain} "{county}" cricket when:2d',
+                  f'site:{domain} "County Championship" when:2d',
+                  f'site:{domain} 2026 cricket when:2d',
               ]
 
+              stats = {
+                  "queries_ok": 0,
+                  "items_seen": 0,
+                  "recent_items": 0,
+                  "domain_matches": 0,
+                  "qualifying": 0,
+              }
               stories = []
               seen_links = set()
 
@@ -529,8 +536,10 @@ jobs:
                       root = search_news_rss(engine, query)
                       if root is None:
                           continue
+                      stats["queries_ok"] += 1
 
                       for item in root.findall(".//item")[:10]:
+                          stats["items_seen"] += 1
                           title = clean(item.findtext("title", ""))
                           link = clean(item.findtext("link", ""))
                           description = clean(BeautifulSoup(
@@ -542,6 +551,7 @@ jobs:
                               continue
                           if rss_published < cutoff - timedelta(days=1) or rss_published > now + timedelta(minutes=30):
                               continue
+                          stats["recent_items"] += 1
 
                           source = item.find("source")
                           source_url = clean(
@@ -556,6 +566,7 @@ jobs:
                               continue
 
                           official_link = resolved or link
+                          stats["domain_matches"] += 1
 
                           if official_link in seen_links or official_link in seen:
                               continue
@@ -627,6 +638,13 @@ jobs:
                   reverse=True
               )[:3]
 
+              stats["qualifying"] = len(result)
+              fallback_search_status[county] = stats
+              print(
+                  f"{county}: fallback diagnostics: {stats['queries_ok']} search queries succeeded; "
+                  f"{stats['items_seen']} items inspected; {stats['recent_items']} within date range; "
+                  f"{stats['domain_matches']} matched the official domain; {len(result)} qualifying."
+              )
               print(f"{county}: official-site news-search fallback found {len(result)} candidate stories.")
               return result
 
@@ -888,6 +906,7 @@ jobs:
                   print(f"{county}: index failed with HTTP {e.code}; trying official-site Google News fallback.")
                   fallback_stories = google_news_official_fallback(county, index_url)
                   county_diag[county]["fallback_candidates"] = len(fallback_stories)
+                  county_diag[county]["fallback_search_status"] = fallback_search_status.get(county, {})
                   for fallback_story in fallback_stories:
                       link = fallback_story["link"]
                       if link in seen:
@@ -1068,10 +1087,22 @@ jobs:
                           f"{info['fallback_candidates']} fallback article(s) were found. "
                           f"{info.get('already_seen', 0)} were already seen; no new qualifying story was posted."
                       )
+                  stats = info.get("fallback_search_status", {})
+                  if stats.get("queries_ok", 0) > 0:
+                      return (
+                          "🔎 **Manual diagnostic**\n"
+                          f"The official news page returned HTTP 403. The backup search worked "
+                          f"({stats.get('queries_ok', 0)} queries succeeded; "
+                          f"{stats.get('items_seen', 0)} results inspected; "
+                          f"{stats.get('recent_items', 0)} recent results; "
+                          f"{stats.get('domain_matches', 0)} official-domain matches), "
+                          "but no qualifying story passed the filters. This does not necessarily mean "
+                          "the county has no recent news; check the run logs if you expected a story."
+                      )
                   return (
                       "🔎 **Manual diagnostic**\n"
-                      "The county news source could not be checked successfully, "
-                      "so this is not being treated as confirmation that there are no new stories."
+                      "The official news page returned HTTP 403 and the backup search could not be "
+                      "completed, so this is not being treated as confirmation that there are no new stories."
                   )
 
               candidates = info.get("candidate_links", 0)
