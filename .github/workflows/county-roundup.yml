@@ -95,6 +95,7 @@ jobs:
 
           cutoff = now - timedelta(hours=24)
           articles = []
+          feed_errors = []
 
           def clean_text(value):
               value = html.unescape(value or "")
@@ -157,6 +158,7 @@ jobs:
                       })
 
               except Exception as e:
+                  feed_errors.append(f"{source} {division}: {e}")
                   print(f"Could not read {source} {division}: {e}")
 
           for source, division, url in feeds:
@@ -336,10 +338,14 @@ jobs:
           has_stories = bool(articles)
 
           if not has_stories:
+              feed_note = (
+                  f" {len(feed_errors)} feed(s) could not be read; check the GitHub Actions logs."
+                  if feed_errors else ""
+              )
               message = (
                   f"ℹ️ **County Championship Round-up - {date_label}: no stories found**\n"
-                  "No qualifying County Championship stories were found in the past 24 hours. "
-                  "The main roundup channel was left untouched."
+                  "No qualifying County Championship stories were returned in the past 24 hours."
+                  f"{feed_note} The main roundup channel was left untouched."
               )
               with open("moderator-message.json", "w", encoding="utf-8") as f:
                   json.dump({"content": message, "flags": 4}, f)
