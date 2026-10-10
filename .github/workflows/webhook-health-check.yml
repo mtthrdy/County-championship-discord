@@ -12,6 +12,7 @@ jobs:
       - name: Check all Discord webhooks
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MODERATOR_ONLY_WEBHOOK_URL: ${{ secrets.MODERATOR_ONLY_WEBHOOK_URL }}
           GAMEWEEK_THREADS_WEBHOOK_URL: ${{ secrets.GAMEWEEK_THREADS_WEBHOOK_URL }}
           SOMERSET_WEBHOOK_URL: ${{ secrets.SOMERSET_WEBHOOK_URL }}
           DERBYSHIRE_WEBHOOK_URL: ${{ secrets.DERBYSHIRE_WEBHOOK_URL }}
@@ -39,6 +40,7 @@ jobs:
 
           hooks = [
               ("National Round-up", "DISCORD_WEBHOOK_URL"),
+              ("Moderator-only notifications", "MODERATOR_ONLY_WEBHOOK_URL"),
               ("Gameweek Guide", "GAMEWEEK_THREADS_WEBHOOK_URL"),
               ("Somerset", "SOMERSET_WEBHOOK_URL"),
               ("Derbyshire", "DERBYSHIRE_WEBHOOK_URL"),
